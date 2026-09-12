@@ -45,9 +45,22 @@ export default function DashboardClient({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [assigningId, setAssigningId] = useState<string | null>(null);
   const [assignedId, setAssignedId] = useState<string | null>(null);
+  const [accountTab, setAccountTab] = useState<"student" | "teacher">(
+    "student",
+  );
+  const [selectedAccountId, setSelectedAccountId] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const teachers = accounts.filter((account) => account.role === "teacher");
+  const studentCount = accounts.filter(
+    (account) => account.role === "student",
+  ).length;
+  const tabAccounts = accounts.filter((account) => account.role === accountTab);
+  const accountOptions = user.role === "admin" ? tabAccounts : accounts;
+  const visibleAccounts = accountOptions.filter(
+    (account) => account.id === selectedAccountId,
+  );
+  const accountCount = accountOptions.length;
 
   async function loadAccounts() {
     if (user.role === "student") return;
@@ -81,11 +94,18 @@ export default function DashboardClient({
           role: user.role === "teacher" ? "student" : data.get("role"),
         }),
       });
-      const result = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(result.error ?? "無法建立帳號");
+      const result = (await response.json()) as {
+        account?: Account;
+        error?: string;
+      };
+      if (!response.ok || !result.account) {
+        throw new Error(result.error ?? "無法建立帳號");
+      }
       form.reset();
       setMessage("帳號已建立，初始密碼與電話相同。");
       await loadAccounts();
+      if (user.role === "admin") setAccountTab(result.account.role);
+      setSelectedAccountId(result.account.id);
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "無法建立帳號");
     } finally {
@@ -188,6 +208,7 @@ export default function DashboardClient({
               : item,
           ),
       );
+      if (selectedAccountId === account.id) setSelectedAccountId("");
       setMessage("帳號已刪除。");
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : "無法刪除帳號");
@@ -252,15 +273,84 @@ export default function DashboardClient({
                 <p className="section-kicker">ACCOUNTS</p>
                 <h2 id="account-title">{user.role === "admin" ? "全部帳號" : "我的學生"}</h2>
               </div>
-              <span className="count-pill">{accounts.length}</span>
+              <span className="count-pill">{accountCount}</span>
             </div>
             {message ? <p className="form-success" role="status">{message}</p> : null}
             {error ? <p className="form-error" role="alert">{error}</p> : null}
-            {loading ? <p className="empty-state">載入中…</p> : accounts.length === 0 ? (
-              <p className="empty-state">目前還沒有帳號。</p>
+            {user.role === "admin" ? (
+              <div className="account-tabs" role="tablist" aria-label="帳號角色">
+                <button
+                  className={accountTab === "student" ? "is-active" : ""}
+                  type="button"
+                  role="tab"
+                  aria-selected={accountTab === "student"}
+                  aria-controls="account-tab-panel"
+                  onClick={() => {
+                    setAccountTab("student");
+                    setSelectedAccountId("");
+                  }}
+                >
+                  同學 <span>{studentCount}</span>
+                </button>
+                <button
+                  className={accountTab === "teacher" ? "is-active" : ""}
+                  type="button"
+                  role="tab"
+                  aria-selected={accountTab === "teacher"}
+                  aria-controls="account-tab-panel"
+                  onClick={() => {
+                    setAccountTab("teacher");
+                    setSelectedAccountId("");
+                  }}
+                >
+                  老師 <span>{teachers.length}</span>
+                </button>
+              </div>
+            ) : null}
+            {accountOptions.length > 0 ? (
+              <label className="student-account-select">
+                <span>
+                  {user.role === "admin"
+                    ? accountTab === "student"
+                      ? "同學"
+                      : "老師"
+                    : "學生"}
+                </span>
+                <select
+                  value={selectedAccountId}
+                  onChange={(event) => setSelectedAccountId(event.target.value)}
+                >
+                  <option value="">
+                    請選擇{user.role === "admin" && accountTab === "teacher" ? "老師" : "學生"}
+                  </option>
+                  {accountOptions.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name ?? "尚未設定姓名"}｜{account.phone}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            {loading ? (
+              <p className="empty-state">載入中…</p>
+            ) : accountOptions.length > 0 && !selectedAccountId ? (
+              <p className="empty-state">
+                請從上方選擇要管理的
+                {user.role === "admin" && accountTab === "teacher" ? "老師" : "學生"}。
+              </p>
+            ) : visibleAccounts.length === 0 ? (
+              <p className="empty-state">
+                {user.role === "admin"
+                  ? `目前還沒有${accountTab === "student" ? "同學" : "老師"}帳號。`
+                  : "目前還沒有學生帳號。"}
+              </p>
             ) : (
-              <div className="account-list">
-                {accounts.map((account) => (
+              <div
+                className="account-list"
+                id="account-tab-panel"
+                role={user.role === "admin" ? "tabpanel" : undefined}
+              >
+                {visibleAccounts.map((account) => (
                   <article className="account-row" key={account.id}>
                     <div className="account-meta">
                       <span className={`role-badge role-${account.role}`}>{roleLabels[account.role]}</span>
@@ -328,6 +418,7 @@ export default function DashboardClient({
         user={user}
         students={accounts}
         initialRecords={initialContactBooks}
+        managedStudentId={user.role === "teacher" ? selectedAccountId : undefined}
       />
     </main>
   );

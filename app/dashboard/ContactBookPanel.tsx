@@ -14,6 +14,7 @@ interface StudentOption {
   phone: string;
   name: string | null;
   role: "teacher" | "student";
+  assignedTeacherId?: string | null;
 }
 
 export interface ContactBookRecord {
@@ -56,10 +57,12 @@ export default function ContactBookPanel({
   user,
   students,
   initialRecords,
+  managedStudentId,
 }: {
   user: ContactBookUser;
   students: StudentOption[];
   initialRecords: ContactBookRecord[];
+  managedStudentId?: string;
 }) {
   const [records, setRecords] = useState(initialRecords);
   const [message, setMessage] = useState("");
@@ -73,15 +76,32 @@ export default function ContactBookPanel({
   const [selectedDate, setSelectedDate] = useState<string | null>(
     initialRecords[0]?.classDate ?? null,
   );
+  const [selectedTeacherId, setSelectedTeacherId] = useState("");
+  const [selectedStudentId, setSelectedStudentId] = useState("");
   const canManage = user.role !== "student";
-  const visibleRecords =
-    user.role === "student" && selectedDate
-      ? records.filter((record) => record.classDate === selectedDate)
-      : records;
   const studentOptions =
     user.role === "student"
       ? [{ id: user.id, phone: user.username, name: user.name, role: "student" as const }]
       : students.filter((student) => student.role === "student");
+  const teacherOptions = students.filter((account) => account.role === "teacher");
+  const filteredStudentOptions =
+    user.role === "admin"
+      ? selectedTeacherId === "unassigned"
+        ? studentOptions.filter((student) => !student.assignedTeacherId)
+        : studentOptions.filter(
+            (student) => student.assignedTeacherId === selectedTeacherId,
+          )
+      : studentOptions;
+  const activeStudentId =
+    user.role === "teacher" ? managedStudentId ?? "" : selectedStudentId;
+  const visibleRecords =
+    user.role === "student"
+      ? selectedDate
+        ? records.filter((record) => record.classDate === selectedDate)
+        : records
+      : activeStudentId
+        ? records.filter((record) => record.student.id === activeStudentId)
+        : [];
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -218,10 +238,48 @@ export default function ContactBookPanel({
           <p className="section-kicker">LESSON NOTES</p>
           <h2 id="contact-book-title">學生聯絡簿</h2>
         </div>
-        <span className="count-pill">{records.length}</span>
+        <span className="count-pill">{visibleRecords.length}</span>
       </div>
 
-      {user.role === "student" ? (
+      {user.role === "admin" ? (
+        <section className="contact-book-filters" aria-label="篩選學生聯絡簿">
+          <label>
+            <span>老師</span>
+            <select
+              value={selectedTeacherId}
+              onChange={(event) => {
+                setSelectedTeacherId(event.target.value);
+                setSelectedStudentId("");
+              }}
+            >
+              <option value="">請先選擇老師</option>
+              {teacherOptions.map((teacher) => (
+                <option key={teacher.id} value={teacher.id}>
+                  {teacher.name ?? "尚未設定姓名"}｜{teacher.phone}
+                </option>
+              ))}
+              <option value="unassigned">尚未指派老師</option>
+            </select>
+          </label>
+          <label>
+            <span>學生</span>
+            <select
+              value={selectedStudentId}
+              disabled={!selectedTeacherId}
+              onChange={(event) => setSelectedStudentId(event.target.value)}
+            >
+              <option value="">
+                {selectedTeacherId ? "請選擇學生" : "請先選擇老師"}
+              </option>
+              {filteredStudentOptions.map((student) => (
+                <option key={student.id} value={student.id}>
+                  {student.name ?? "尚未設定姓名"}｜{student.phone}
+                </option>
+              ))}
+            </select>
+          </label>
+        </section>
+      ) : user.role === "student" ? (
         <section className="student-date-filter" aria-label="依上課日期篩選">
           <label className="student-date-field">
             <span>上課日期</span>
@@ -252,38 +310,31 @@ export default function ContactBookPanel({
 
       {canManage ? (
         studentOptions.length > 0 ? (
-          <form className="contact-book-editor new-contact-book" onSubmit={handleCreate}>
-            <div className="editor-heading">
-              <h3>新增課後紀錄</h3>
-              <div className="editor-meta-fields">
-                <label>
-                  <span>學生</span>
-                  <select name="studentId" required defaultValue={studentOptions[0]?.id}>
-                    {studentOptions.map((student) => (
-                      <option key={student.id} value={student.id}>
-                        {student.name ?? "尚未設定姓名"}｜{student.phone}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>上課日期</span>
-                  <input name="classDate" type="date" required defaultValue={taipeiToday} />
-                </label>
+          activeStudentId ? (
+            <form className="contact-book-editor new-contact-book" onSubmit={handleCreate}>
+              <input type="hidden" name="studentId" value={activeStudentId} />
+              <div className="editor-heading">
+                <h3>新增課後紀錄</h3>
+                <div className="editor-meta-fields date-only">
+                  <label>
+                    <span>上課日期</span>
+                    <input name="classDate" type="date" required defaultValue={taipeiToday} />
+                  </label>
+                </div>
               </div>
-            </div>
-            <div className="contact-field-grid">
-              {fields.map((field) => (
-                <label className="contact-field" key={field.name}>
-                  <span><b aria-hidden="true">{field.icon}</b>{field.label}</span>
-                  <textarea name={field.name} rows={4} maxLength={5000} />
-                </label>
-              ))}
-            </div>
-            <button className="primary-button" type="submit" disabled={pending}>
-              {pending ? "儲存中…" : "新增聯絡簿"}
-            </button>
-          </form>
+              <div className="contact-field-grid">
+                {fields.map((field) => (
+                  <label className="contact-field" key={field.name}>
+                    <span><b aria-hidden="true">{field.icon}</b>{field.label}</span>
+                    <textarea name={field.name} rows={4} maxLength={5000} />
+                  </label>
+                ))}
+              </div>
+              <button className="primary-button" type="submit" disabled={pending}>
+                {pending ? "儲存中…" : "新增聯絡簿"}
+              </button>
+            </form>
+          ) : null
         ) : (
           <p className="empty-state">請先建立學生帳號，再新增聯絡簿。</p>
         )
@@ -291,9 +342,15 @@ export default function ContactBookPanel({
 
       {visibleRecords.length === 0 ? (
         <p className="empty-state">
-          {selectedDate && user.role === "student"
-            ? `${selectedDate} 沒有聯絡簿紀錄。`
-            : "目前還沒有聯絡簿紀錄。"}
+          {user.role === "admin" && !selectedTeacherId
+            ? "請先選擇老師，再選擇學生。"
+            : canManage && !activeStudentId
+              ? user.role === "teacher"
+                ? "請先從「我的學生」選單選擇學生。"
+                : "請選擇要查看的學生。"
+              : selectedDate && user.role === "student"
+                ? `${selectedDate} 沒有聯絡簿紀錄。`
+                : "這位學生目前還沒有聯絡簿紀錄。"}
         </p>
       ) : (
         <div className="contact-book-list">

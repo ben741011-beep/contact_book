@@ -30,6 +30,8 @@ button:disabled { cursor: wait; opacity: 0.65; }
 .auth-shell, .dashboard-shell { min-height: 100vh; }
 .auth-shell { display: grid; place-items: center; padding: 2rem 1.25rem; }
 .auth-card {
+  position: relative;
+  overflow: hidden;
   width: min(100%, 28rem);
   padding: 2.5rem;
   border: 1px solid var(--line);
@@ -37,11 +39,22 @@ button:disabled { cursor: wait; opacity: 0.65; }
   background: rgba(255, 253, 248, 0.94);
   box-shadow: 0 1.5rem 4rem rgba(36, 76, 58, 0.12);
 }
-.brand-mark {
-  display: grid; place-items: center; width: 3rem; height: 3rem;
-  border-radius: 0.85rem; margin-bottom: 1.75rem;
-  background: var(--forest); color: white; font-weight: 700; font-size: 1.25rem;
+.auth-card::before {
+  position: absolute; top: -5rem; right: -4rem; width: 12rem; height: 12rem;
+  border-radius: 50%; background: radial-gradient(circle, rgba(176, 123, 54, 0.16), rgba(176, 123, 54, 0)); content: "";
 }
+.auth-card > * { position: relative; }
+.brand-lockup { display: flex; align-items: center; gap: 0.9rem; margin-bottom: 2rem; }
+.brand-emblem {
+  display: grid; place-items: center; flex: 0 0 4rem; width: 4rem; height: 4rem;
+  border-radius: 1.15rem; background: linear-gradient(145deg, #2c664e, var(--forest));
+  box-shadow: 0 0.65rem 1.4rem rgba(36, 76, 58, 0.2); color: #fffdf8;
+}
+.brand-emblem svg { width: 2.7rem; height: 2.7rem; fill: none; stroke: currentColor; stroke-width: 2.8; stroke-linecap: round; stroke-linejoin: round; }
+.brand-emblem circle { fill: currentColor; stroke: none; }
+.brand-copy { display: grid; gap: 0.18rem; }
+.brand-copy strong { color: var(--forest-dark); font-size: 1.12rem; letter-spacing: 0.04em; }
+.brand-copy span { color: var(--gold); font-size: 0.66rem; font-weight: 900; letter-spacing: 0.11em; text-transform: uppercase; }
 .eyebrow, .section-kicker { margin: 0 0 0.45rem; color: var(--gold); font-size: 0.72rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; }
 h1, h2, p { margin-top: 0; }
 .auth-card h1, .topbar h1 { margin-bottom: 0.65rem; letter-spacing: -0.03em; }
@@ -76,6 +89,13 @@ input:focus, select:focus { border-color: var(--forest); box-shadow: 0 0 0 3px r
 .panel h2 { margin-bottom: 0; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .count-pill { min-width: 2.2rem; padding: 0.35rem 0.6rem; border-radius: 999px; background: #efe9da; color: #745126; text-align: center; font-weight: 800; }
+.account-tabs { display: flex; gap: 0.45rem; margin-top: 1rem; padding: 0.3rem; border-radius: 0.85rem; background: #f0ece2; }
+.account-tabs button { flex: 1; padding: 0.65rem 0.85rem; border: 0; border-radius: 0.65rem; background: transparent; color: var(--muted); font-weight: 900; }
+.account-tabs button span { display: inline-grid; place-items: center; min-width: 1.5rem; margin-left: 0.3rem; padding: 0.1rem 0.35rem; border-radius: 999px; background: rgba(255, 255, 255, 0.72); font-size: 0.75rem; }
+.account-tabs button.is-active { background: var(--surface); color: var(--forest-dark); box-shadow: 0 0.25rem 0.8rem rgba(36, 76, 58, 0.1); }
+.student-account-select { display: grid; gap: 0.45rem; margin-top: 1rem; }
+.student-account-select > span { color: var(--forest-dark); font-weight: 900; }
+.student-account-select select { background: white; }
 .account-list { display: grid; gap: 0.75rem; margin-top: 1.2rem; }
 .account-row { display: grid; grid-template-columns: minmax(9rem, 1fr) minmax(15rem, 1.4fr); align-items: center; gap: 1rem; padding: 1rem; border: 1px solid #e8e3d7; border-radius: 0.9rem; background: white; }
 .account-meta { display: grid; justify-items: start; gap: 0.28rem; }
@@ -90,6 +110,10 @@ input:focus, select:focus { border-color: var(--forest); box-shadow: 0 0 0 3px r
 .contact-book-section { margin-top: 1.25rem; padding: 1.5rem; border: 1px solid var(--line); border-radius: 1.25rem; background: rgba(255, 253, 248, 0.94); box-shadow: 0 1rem 3rem rgba(36, 76, 58, 0.07); }
 .contact-book-heading { margin-bottom: 1.25rem; }
 .contact-book-heading h2, .editor-heading h3 { margin-bottom: 0; }
+.contact-book-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-bottom: 1.25rem; padding: 1rem; border: 1px dashed #d7cebd; border-radius: 1rem; background: #faf8f1; }
+.contact-book-filters label { display: grid; gap: 0.45rem; }
+.contact-book-filters label > span { color: var(--forest-dark); font-weight: 900; }
+.contact-book-filters select { background: white; }
 .student-date-filter { display: flex; align-items: end; gap: 1rem; margin-bottom: 1.25rem; padding: 1rem; border: 1px dashed #d7cebd; border-radius: 1rem; background: #faf8f1; }
 .student-date-field { flex: 0 0 12rem; }
 .student-date-field > span { color: var(--forest-dark); font-weight: 900; }
@@ -101,6 +125,7 @@ input:focus, select:focus { border-color: var(--forest); box-shadow: 0 0 0 3px r
 .new-contact-book { margin-bottom: 1.25rem; padding: 1.25rem; border: 1px dashed #c9c1ae; border-radius: 1rem; background: #faf7ef; }
 .editor-heading { display: flex; align-items: end; justify-content: space-between; gap: 1rem; }
 .editor-meta-fields { display: grid; grid-template-columns: minmax(13rem, 1.4fr) minmax(10rem, 1fr); gap: 0.75rem; }
+.editor-meta-fields.date-only { grid-template-columns: minmax(10rem, 1fr); }
 .contact-book-list { display: grid; gap: 1.25rem; }
 .contact-book-card { overflow: hidden; border: 1px solid #ddd6c8; border-radius: 1.1rem; background: #fffdfa; }
 .contact-card-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.2rem; background: linear-gradient(135deg, #eef1e7, #f4eee2); }
@@ -140,6 +165,7 @@ label.contact-field { gap: 0.7rem; }
   .editor-heading { align-items: stretch; flex-direction: column; }
   .editor-meta-fields, .contact-field-grid { grid-template-columns: 1fr; }
   .contact-card-header { align-items: flex-start; flex-direction: column; }
+  .contact-book-filters { grid-template-columns: 1fr; }
   .student-date-filter { align-items: stretch; flex-direction: column; }
   .student-date-field { flex-basis: auto; width: min(100%, 14rem); }
   .student-date-filter p, .date-filter-show-all { margin: 0; }
