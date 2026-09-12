@@ -13,6 +13,7 @@
     "test:e2e:contact-books": "tsx scripts/e2e-contact-books.ts"
   },
   "dependencies": {
+    "@vercel/blob": "^2.8.0",
     "bcryptjs": "^3.0.3",
     "jose": "^6.2.12",
     "mongodb": "^7.6.0",

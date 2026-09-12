@@ -4,6 +4,26 @@ import { getDatabase } from "@/lib/mongodb";
 import { getAccountsCollection, type SessionRole } from "@/models/Account";
 
 export const CONTACT_BOOKS_COLLECTION = "contactBooks";
+export const CONTACT_BOOK_MEDIA_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "video/mp4",
+  "video/webm",
+] as const;
+export const MAX_CONTACT_BOOK_MEDIA_SIZE = 200 * 1024 * 1024;
+export const MAX_CONTACT_BOOK_MEDIA_ITEMS = 12;
+
+export type ContactBookMediaType = (typeof CONTACT_BOOK_MEDIA_TYPES)[number];
+
+export interface ContactBookMediaDocument {
+  id: string;
+  pathname: string;
+  contentType: ContactBookMediaType;
+  size: number;
+  originalName: string;
+  uploadedAt: Date;
+}
 
 export interface ContactBookActor {
   role: SessionRole;
@@ -19,6 +39,7 @@ export interface ContactBookDocument extends Document {
   homework: string;
   nextPreview: string;
   studentComment: string;
+  media: ContactBookMediaDocument[];
   createdByRole: "admin" | "teacher";
   createdByAccountId: ObjectId | null;
   createdAt: Date;
@@ -34,6 +55,13 @@ export interface PublicContactBook {
   homework: string;
   nextPreview: string;
   studentComment: string;
+  media: Array<{
+    id: string;
+    contentType: ContactBookMediaType;
+    size: number;
+    originalName: string;
+    uploadedAt: string;
+  }>;
   createdAt: string;
   updatedAt: string;
 }
@@ -51,6 +79,7 @@ export const contactBooksValidator = {
       "homework",
       "nextPreview",
       "studentComment",
+      "media",
       "createdByRole",
       "createdByAccountId",
       "createdAt",
@@ -68,6 +97,30 @@ export const contactBooksValidator = {
       homework: { bsonType: "string", maxLength: 5000 },
       nextPreview: { bsonType: "string", maxLength: 5000 },
       studentComment: { bsonType: "string", maxLength: 5000 },
+      media: {
+        bsonType: "array",
+        maxItems: MAX_CONTACT_BOOK_MEDIA_ITEMS,
+        items: {
+          bsonType: "object",
+          additionalProperties: false,
+          required: [
+            "id",
+            "pathname",
+            "contentType",
+            "size",
+            "originalName",
+            "uploadedAt",
+          ],
+          properties: {
+            id: { bsonType: "string", pattern: "^[0-9a-f-]{36}$" },
+            pathname: { bsonType: "string", maxLength: 1000 },
+            contentType: { enum: [...CONTACT_BOOK_MEDIA_TYPES] },
+            size: { bsonType: ["int", "long", "double"], minimum: 1 },
+            originalName: { bsonType: "string", maxLength: 255 },
+            uploadedAt: { bsonType: "date" },
+          },
+        },
+      },
       createdByRole: { enum: ["admin", "teacher"] },
       createdByAccountId: { bsonType: ["objectId", "null"] },
       createdAt: { bsonType: "date" },
@@ -97,7 +150,7 @@ export async function ensureContactBooksCollection() {
       $jsonSchema: {
         ...contactBooksValidator.$jsonSchema,
         required: contactBooksValidator.$jsonSchema.required.filter(
-          (field) => field !== "studentComment",
+          (field) => field !== "studentComment" && field !== "media",
         ),
       },
     };
@@ -113,6 +166,9 @@ export async function ensureContactBooksCollection() {
         { studentComment: { $exists: false } },
         { $set: { studentComment: "" } },
       );
+    await database
+      .collection<ContactBookDocument>(CONTACT_BOOKS_COLLECTION)
+      .updateMany({ media: { $exists: false } }, { $set: { media: [] } });
     await database.command({
       collMod: CONTACT_BOOKS_COLLECTION,
       validator: contactBooksValidator,
@@ -225,6 +281,13 @@ async function serializeContactBooks(records: ContactBookDocument[]) {
       homework: record.homework,
       nextPreview: record.nextPreview,
       studentComment: record.studentComment,
+      media: (record.media ?? []).map((item) => ({
+        id: item.id,
+        contentType: item.contentType,
+        size: item.size,
+        originalName: item.originalName,
+        uploadedAt: item.uploadedAt.toISOString(),
+      })),
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
     };
@@ -274,6 +337,7 @@ export async function createContactBook(
     studentId,
     ...values,
     studentComment: "",
+    media: [],
     createdByRole: actor.role,
     createdByAccountId:
       actor.role === "teacher" ? new ObjectId(actor.accountId!) : null,
@@ -372,6 +436,140 @@ export async function updateContactBook(
     }
     throw error;
   }
+}
+
+async function findAccessibleContactBook(
+  actor: ContactBookActor,
+  recordId: string,
+) {
+  if (!ObjectId.isValid(recordId)) {
+    throw new ContactBookValidationError("聯絡簿 ID 不正確");
+  }
+  const collection = await getContactBooksCollection();
+  const record = await collection.findOne({ _id: new ObjectId(recordId) });
+  if (!record || !(await findManagedStudent(actor, record.studentId))) return null;
+  return record;
+}
+
+export async function canUploadContactBookMedia(
+  actor: ContactBookActor,
+  recordId: string,
+) {
+  if (actor.role === "student") return false;
+  return Boolean(await findAccessibleContactBook(actor, recordId));
+}
+
+function parseMediaInput(input: Record<string, unknown>): ContactBookMediaDocument {
+  const pathname = typeof input.pathname === "string" ? input.pathname.trim() : "";
+  const contentType = input.contentType;
+  const size = typeof input.size === "number" ? input.size : Number.NaN;
+  const originalName =
+    typeof input.originalName === "string" ? input.originalName.trim() : "";
+
+  if (!pathname.startsWith("contact-books/") || pathname.length > 1000) {
+    throw new ContactBookValidationError("媒體檔案路徑不正確");
+  }
+  if (!CONTACT_BOOK_MEDIA_TYPES.includes(contentType as ContactBookMediaType)) {
+    throw new ContactBookValidationError("只支援 JPG、PNG、WebP、MP4 或 WebM");
+  }
+  if (!Number.isSafeInteger(size) || size < 1 || size > MAX_CONTACT_BOOK_MEDIA_SIZE) {
+    throw new ContactBookValidationError("媒體檔案大小不正確");
+  }
+  if (!originalName || originalName.length > 255) {
+    throw new ContactBookValidationError("媒體檔名不正確");
+  }
+
+  return {
+    id: crypto.randomUUID(),
+    pathname,
+    contentType: contentType as ContactBookMediaType,
+    size,
+    originalName,
+    uploadedAt: new Date(),
+  };
+}
+
+export async function addContactBookMedia(
+  actor: ContactBookActor,
+  recordId: string,
+  input: Record<string, unknown>,
+) {
+  if (actor.role === "student") {
+    throw new ContactBookValidationError("學生沒有上傳媒體的權限");
+  }
+  const existing = await findAccessibleContactBook(actor, recordId);
+  if (!existing) return null;
+  if ((existing.media ?? []).length >= MAX_CONTACT_BOOK_MEDIA_ITEMS) {
+    throw new ContactBookValidationError(
+      `每篇聯絡簿最多 ${MAX_CONTACT_BOOK_MEDIA_ITEMS} 個媒體檔案`,
+    );
+  }
+
+  const media = parseMediaInput(input);
+  if (!media.pathname.startsWith(`contact-books/${recordId}/`)) {
+    throw new ContactBookValidationError("媒體檔案與聯絡簿不相符");
+  }
+
+  const collection = await getContactBooksCollection();
+  const _id = new ObjectId(recordId);
+  const update: Document = {
+    $push: { media },
+    $set: { updatedAt: new Date() },
+  };
+  const result = await collection.updateOne(
+    { _id, "media.pathname": { $ne: media.pathname } },
+    update,
+  );
+  if (result.matchedCount !== 1) {
+    throw new ContactBookValidationError("這個媒體檔案已加入聯絡簿");
+  }
+  const updated = await collection.findOne({ _id });
+  if (!updated) throw new Error("新增媒體後無法查回聯絡簿");
+  return {
+    record: (await serializeContactBooks([updated]))[0],
+    matchedCount: result.matchedCount,
+    modifiedCount: result.modifiedCount,
+    mediaId: media.id,
+  };
+}
+
+export async function findContactBookMedia(
+  actor: ContactBookActor,
+  recordId: string,
+  mediaId: string,
+) {
+  const record = await findAccessibleContactBook(actor, recordId);
+  return record?.media?.find((item) => item.id === mediaId) ?? null;
+}
+
+export async function removeContactBookMedia(
+  actor: ContactBookActor,
+  recordId: string,
+  mediaId: string,
+) {
+  if (actor.role === "student") {
+    throw new ContactBookValidationError("學生沒有刪除媒體的權限");
+  }
+  const existing = await findAccessibleContactBook(actor, recordId);
+  if (!existing) return null;
+  const media = existing.media?.find((item) => item.id === mediaId);
+  if (!media) return null;
+
+  const collection = await getContactBooksCollection();
+  const _id = new ObjectId(recordId);
+  const update: Document = {
+    $pull: { media: { id: mediaId } },
+    $set: { updatedAt: new Date() },
+  };
+  const result = await collection.updateOne({ _id, "media.id": mediaId }, update);
+  const updated = await collection.findOne({ _id });
+  if (!updated) throw new Error("刪除媒體後無法查回聯絡簿");
+  return {
+    record: (await serializeContactBooks([updated]))[0],
+    media,
+    matchedCount: result.matchedCount,
+    modifiedCount: result.modifiedCount,
+  };
 }
 
 export async function deleteContactBook(

@@ -161,6 +161,23 @@ label.contact-field { gap: 0.7rem; }
 .contact-field b { display: inline-grid; place-items: center; flex: 0 0 1.8rem; height: 1.8rem; border-radius: 50%; background: #78856a; color: white; font-size: 0.9rem; }
 .contact-field textarea { min-height: 7.5rem; resize: vertical; border: 1px solid #dcd5c7; border-radius: 0.7rem; padding: 0.75rem; background: white; color: var(--ink); line-height: 1.65; outline: none; }
 .contact-field textarea:focus { border-color: var(--forest); box-shadow: 0 0 0 3px rgba(36, 76, 58, 0.1); }
+.contact-media-upload, .contact-media-section { padding: 1rem; border: 1px solid #e7e0d3; border-radius: 0.9rem; background: #fbf9f4; }
+.contact-media-upload > span, .contact-media-heading h3 { display: flex; align-items: center; gap: 0.55rem; margin: 0; color: var(--forest); font-size: 1rem; font-weight: 900; }
+.contact-media-upload b, .contact-media-heading b { display: inline-grid; place-items: center; flex: 0 0 1.8rem; height: 1.8rem; border-radius: 50%; background: #9a6b3d; color: white; font-size: 0.85rem; }
+.contact-media-upload small { color: var(--muted); font-weight: 500; line-height: 1.6; }
+.contact-media-section { display: grid; gap: 0.85rem; }
+.contact-media-view { grid-column: 1 / -1; }
+.contact-media-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.contact-media-heading > span { padding: 0.25rem 0.55rem; border-radius: 999px; background: #eee8db; color: #6d573b; font-size: 0.75rem; font-weight: 800; }
+.contact-media-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
+.contact-media-item { min-width: 0; margin: 0; overflow: hidden; border: 1px solid #dfd8ca; border-radius: 0.8rem; background: white; }
+.contact-media-item img, .contact-media-item video { display: block; width: 100%; height: 10rem; background: #18201b; object-fit: cover; }
+.contact-media-item figcaption { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.25rem 0.65rem; padding: 0.65rem; }
+.contact-media-item figcaption span { overflow: hidden; color: #34443b; font-size: 0.82rem; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.contact-media-item figcaption small { color: var(--muted); font-size: 0.72rem; }
+.media-remove-button { grid-column: 1 / -1; justify-self: end; padding: 0.25rem 0; border: 0; background: transparent; color: var(--danger); font-size: 0.78rem; font-weight: 800; }
+.contact-media-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.65rem; }
+.contact-media-empty { margin: 0; padding: 1rem; border: 1px dashed #d8d0c2; border-radius: 0.7rem; color: var(--muted); text-align: center; }
 .contact-book-view { padding: 1.2rem; }
 .contact-book-view .contact-field p { margin: 0.8rem 0 0; color: #3f4942; line-height: 1.75; white-space: pre-wrap; }
 .student-comment-field { grid-column: 1 / -1; }
@@ -183,6 +200,7 @@ label.contact-field { gap: 0.7rem; }
   .teacher-assignment-form label { grid-column: 1 / -1; }
   .editor-heading { align-items: stretch; flex-direction: column; }
   .editor-meta-fields, .contact-field-grid { grid-template-columns: 1fr; }
+  .contact-media-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .contact-card-header { align-items: flex-start; flex-direction: column; }
   .contact-book-filters { grid-template-columns: 1fr; }
   .student-calendar { padding: 0.85rem; }
@@ -196,6 +214,7 @@ label.contact-field { gap: 0.7rem; }
   .topbar { align-items: flex-start; }
   .contact-book-section { padding: 1rem; }
   .editor-actions { display: grid; }
+  .contact-media-grid, .contact-media-controls { grid-template-columns: 1fr; }
   .calendar-toolbar { align-items: flex-start; flex-direction: column; }
   .calendar-navigation { align-self: stretch; }
   .calendar-navigation button:nth-child(2) { flex: 1; }

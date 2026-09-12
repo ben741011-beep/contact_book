@@ -1,5 +1,7 @@
 "use client";
 
+import { uploadPresigned } from "@vercel/blob/client";
+import Image from "next/image";
 import { FormEvent, useEffect, useRef, useState } from "react";
 
 interface ContactBookUser {
@@ -26,6 +28,13 @@ export interface ContactBookRecord {
   homework: string;
   nextPreview: string;
   studentComment: string;
+  media: Array<{
+    id: string;
+    contentType: "image/jpeg" | "image/png" | "image/webp" | "video/mp4" | "video/webm";
+    size: number;
+    originalName: string;
+    uploadedAt: string;
+  }>;
   createdAt: string;
   updatedAt: string;
 }
@@ -45,6 +54,24 @@ const fields = [
 ] as const;
 
 const calendarWeekdays = ["日", "一", "二", "三", "四", "五", "六"];
+const allowedMediaTypes = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "video/mp4",
+  "video/webm",
+]);
+const maxMediaSize = 200 * 1024 * 1024;
+const maxMediaItems = 12;
+
+function formatBytes(size: number) {
+  if (size >= 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(size / 1024))} KB`;
+}
+
+function mediaPath(recordId: string, mediaId: string) {
+  return `/api/contact-books/${recordId}/media/${mediaId}`;
+}
 
 function shiftMonth(month: string, offset: number) {
   const [year, monthNumber] = month.split("-").map(Number);
@@ -92,6 +119,12 @@ export default function ContactBookPanel({
   const [savedCommentId, setSavedCommentId] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{
+    fileName: string;
+    percentage: number;
+  } | null>(null);
+  const [removingMediaId, setRemovingMediaId] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(initialSelectedDate);
   const [calendarMonth, setCalendarMonth] = useState(
     (initialSelectedDate ?? taipeiToday).slice(0, 7),
@@ -148,6 +181,120 @@ export default function ContactBookPanel({
       ?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
   }, [calendarMonth, selectedDate]);
 
+  function validateMediaFiles(files: File[], existingCount: number) {
+    if (files.length === 0) throw new Error("請先選擇照片或影片");
+    if (existingCount + files.length > maxMediaItems) {
+      throw new Error(`每篇聯絡簿最多 ${maxMediaItems} 個媒體檔案`);
+    }
+    for (const file of files) {
+      if (!allowedMediaTypes.has(file.type)) {
+        throw new Error(`${file.name} 格式不支援，請使用 JPG、PNG、WebP、MP4 或 WebM`);
+      }
+      if (file.size < 1 || file.size > maxMediaSize) {
+        throw new Error(`${file.name} 不可超過 200 MB`);
+      }
+    }
+  }
+
+  async function uploadMediaFiles(
+    recordId: string,
+    files: File[],
+    existingCount: number,
+  ) {
+    validateMediaFiles(files, existingCount);
+    setUploadingId(recordId);
+    let latestRecord: ContactBookRecord | null = null;
+
+    try {
+      for (const [index, file] of files.entries()) {
+        setUploadProgress({ fileName: file.name, percentage: 0 });
+        const extension = file.name.split(".").pop()?.toLowerCase() || "bin";
+        const pathname = `contact-books/${recordId}/media-${Date.now()}-${index}.${extension}`;
+        const blob = await uploadPresigned(pathname, file, {
+          access: "private",
+          handleUploadUrl: `/api/contact-books/${recordId}/media/upload`,
+          contentType: file.type,
+          multipart: file.size > 100 * 1024 * 1024,
+          onUploadProgress: ({ percentage }) => {
+            setUploadProgress({ fileName: file.name, percentage: Math.round(percentage) });
+          },
+        });
+        const response = await fetch(`/api/contact-books/${recordId}/media`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pathname: blob.pathname,
+            originalName: file.name,
+          }),
+        });
+        const result = (await response.json()) as {
+          record?: ContactBookRecord;
+          error?: string;
+        };
+        if (!response.ok || !result.record) {
+          throw new Error(result.error ?? "媒體已上傳，但無法加入聯絡簿");
+        }
+        latestRecord = result.record;
+        setRecords((current) =>
+          current.map((record) =>
+            record.id === recordId ? result.record! : record,
+          ),
+        );
+      }
+      return latestRecord;
+    } finally {
+      setUploadingId(null);
+      setUploadProgress(null);
+    }
+  }
+
+  async function handleExistingMediaUpload(record: ContactBookRecord) {
+    const input = document.getElementById(
+      `media-${record.id}`,
+    ) as HTMLInputElement | null;
+    const files = Array.from(input?.files ?? []);
+    setMessage("");
+    setError("");
+    try {
+      await uploadMediaFiles(record.id, files, record.media.length);
+      if (input) input.value = "";
+      setMessage("照片／影片已上傳。");
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "無法上傳媒體");
+    }
+  }
+
+  async function handleRemoveMedia(recordId: string, mediaId: string) {
+    if (!window.confirm("確定要移除這個照片或影片？")) return;
+    setRemovingMediaId(mediaId);
+    setMessage("");
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/contact-books/${recordId}/media/${mediaId}`,
+        { method: "DELETE" },
+      );
+      const result = (await response.json()) as {
+        record?: ContactBookRecord;
+        cleanupWarning?: string;
+        error?: string;
+      };
+      if (!response.ok || !result.record) {
+        throw new Error(result.error ?? "無法移除媒體");
+      }
+      setRecords((current) =>
+        current.map((record) =>
+          record.id === recordId ? result.record! : record,
+        ),
+      );
+      setMessage(result.cleanupWarning ?? "照片／影片已移除。");
+    } catch (removeError) {
+      setError(removeError instanceof Error ? removeError.message : "無法移除媒體");
+    } finally {
+      setRemovingMediaId(null);
+    }
+  }
+
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPending(true);
@@ -155,6 +302,9 @@ export default function ContactBookPanel({
     setMessage("");
     setError("");
     const form = event.currentTarget;
+    const mediaFiles = Array.from(
+      form.querySelector<HTMLInputElement>('input[name="media"]')?.files ?? [],
+    );
     try {
       const response = await fetch("/api/contact-books", {
         method: "POST",
@@ -174,8 +324,15 @@ export default function ContactBookPanel({
         ),
       );
       form.reset();
+      if (mediaFiles.length > 0) {
+        await uploadMediaFiles(result.record.id, mediaFiles, 0);
+      }
       setCreatedForStudentId(activeStudentId);
-      if (user.role === "teacher") setMessage("聯絡簿已新增。");
+      if (user.role === "teacher" || mediaFiles.length > 0) {
+        setMessage(
+          mediaFiles.length > 0 ? "聯絡簿與照片／影片已新增。" : "聯絡簿已新增。",
+        );
+      }
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "無法新增聯絡簿");
     } finally {
@@ -459,9 +616,23 @@ export default function ContactBookPanel({
                   </label>
                 ))}
               </div>
+              <label className="contact-media-upload">
+                <span><b aria-hidden="true">▣</b>照片或影片</span>
+                <input
+                  name="media"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"
+                  multiple
+                />
+                <small>支援 JPG、PNG、WebP、MP4、WebM；單檔最多 200 MB。</small>
+              </label>
               <div className="editor-actions">
                 <button className="secondary-button" type="submit" disabled={pending}>
-                  {pending ? "新增中…" : "新增聯絡簿"}
+                  {pending
+                    ? uploadProgress
+                      ? `上傳 ${uploadProgress.fileName} ${uploadProgress.percentage}%`
+                      : "新增中…"
+                    : "新增聯絡簿"}
                 </button>
                 {createdForStudentId === activeStudentId ? (
                   <span className="inline-save-status" role="status">✓ 已新增</span>
@@ -518,6 +689,69 @@ export default function ContactBookPanel({
                     <h3><b aria-hidden="true">✎</b>學生留言</h3>
                     <p>{record.studentComment || "尚未留言"}</p>
                   </section>
+                  <section className="contact-media-section" aria-label="照片與影片">
+                    <div className="contact-media-heading">
+                      <h3><b aria-hidden="true">▣</b>照片與影片</h3>
+                      <span>{record.media.length} / {maxMediaItems}</span>
+                    </div>
+                    {record.media.length > 0 ? (
+                      <div className="contact-media-grid">
+                        {record.media.map((media) => (
+                          <figure key={media.id} className="contact-media-item">
+                            {media.contentType.startsWith("image/") ? (
+                              <Image
+                                unoptimized
+                                src={mediaPath(record.id, media.id)}
+                                alt={media.originalName}
+                                width={640}
+                                height={480}
+                              />
+                            ) : (
+                              <video controls preload="metadata">
+                                <source
+                                  src={mediaPath(record.id, media.id)}
+                                  type={media.contentType}
+                                />
+                              </video>
+                            )}
+                            <figcaption>
+                              <span title={media.originalName}>{media.originalName}</span>
+                              <small>{formatBytes(media.size)}</small>
+                              <button
+                                className="media-remove-button"
+                                type="button"
+                                disabled={removingMediaId === media.id}
+                                onClick={() => handleRemoveMedia(record.id, media.id)}
+                              >
+                                {removingMediaId === media.id ? "移除中…" : "移除"}
+                              </button>
+                            </figcaption>
+                          </figure>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="contact-media-empty">尚未上傳照片或影片</p>
+                    )}
+                    <div className="contact-media-controls">
+                      <input
+                        id={`media-${record.id}`}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"
+                        multiple
+                        disabled={uploadingId === record.id}
+                      />
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        disabled={uploadingId === record.id}
+                        onClick={() => handleExistingMediaUpload(record)}
+                      >
+                        {uploadingId === record.id && uploadProgress
+                          ? `${uploadProgress.percentage}%`
+                          : "上傳照片／影片"}
+                      </button>
+                    </div>
+                  </section>
                   <div className="editor-actions">
                     <button
                       className="secondary-button"
@@ -547,6 +781,41 @@ export default function ContactBookPanel({
                       <p>{record[field.name] || "尚未填寫"}</p>
                     </section>
                   ))}
+                  <section className="contact-media-section contact-media-view">
+                    <div className="contact-media-heading">
+                      <h3><b aria-hidden="true">▣</b>照片與影片</h3>
+                    </div>
+                    {record.media.length > 0 ? (
+                      <div className="contact-media-grid">
+                        {record.media.map((media) => (
+                          <figure key={media.id} className="contact-media-item">
+                            {media.contentType.startsWith("image/") ? (
+                              <Image
+                                unoptimized
+                                src={mediaPath(record.id, media.id)}
+                                alt={media.originalName}
+                                width={640}
+                                height={480}
+                              />
+                            ) : (
+                              <video controls preload="metadata">
+                                <source
+                                  src={mediaPath(record.id, media.id)}
+                                  type={media.contentType}
+                                />
+                              </video>
+                            )}
+                            <figcaption>
+                              <span title={media.originalName}>{media.originalName}</span>
+                              <small>{formatBytes(media.size)}</small>
+                            </figcaption>
+                          </figure>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="contact-media-empty">尚未上傳照片或影片</p>
+                    )}
+                  </section>
                   <form
                     className="contact-field student-comment-field student-comment-form"
                     onSubmit={(event) => handleComment(event, record.id)}

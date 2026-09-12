@@ -306,7 +306,8 @@ async function main() {
           typeof record.learningFocus === "string" &&
           typeof record.homework === "string" &&
           typeof record.nextPreview === "string" &&
-          typeof record.studentComment === "string",
+          typeof record.studentComment === "string" &&
+          Array.isArray(record.media),
       ),
     "聯絡簿新增後查回欄位不完整",
   );

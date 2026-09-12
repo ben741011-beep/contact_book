@@ -11,10 +11,16 @@ async function main() {
   const missingCommentCountBefore = await existingCollection.countDocuments({
     studentComment: { $exists: false },
   });
+  const missingMediaCountBefore = await existingCollection.countDocuments({
+    media: { $exists: false },
+  });
   const collection = await ensureContactBooksCollection();
   const indexes = await collection.indexes();
   const missingCommentCountAfter = await collection.countDocuments({
     studentComment: { $exists: false },
+  });
+  const missingMediaCountAfter = await collection.countDocuments({
+    media: { $exists: false },
   });
 
   if (
@@ -30,6 +36,7 @@ async function main() {
       collection: collection.collectionName,
       documentCount: await collection.countDocuments({}),
       migratedCount: missingCommentCountBefore - missingCommentCountAfter,
+      migratedMediaCount: missingMediaCountBefore - missingMediaCountAfter,
       indexes: indexes.map((index) => index.name),
     }),
   );
