@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 
 interface ContactBookUser {
   id: string;
@@ -44,6 +44,20 @@ const fields = [
   { name: "nextPreview", label: "下次預告", icon: "⚑" },
 ] as const;
 
+const calendarWeekdays = ["日", "一", "二", "三", "四", "五", "六"];
+
+function shiftMonth(month: string, offset: number) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const shifted = new Date(year, monthNumber - 1 + offset, 1);
+  return `${shifted.getFullYear()}-${String(shifted.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getMonthDays(month: string) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const daysInMonth = new Date(year, monthNumber, 0).getDate();
+  return Array.from({ length: daysInMonth }, (_, index) => index + 1);
+}
+
 function formPayload(form: HTMLFormElement) {
   const data = new FormData(form);
   return Object.fromEntries(
@@ -64,20 +78,27 @@ export default function ContactBookPanel({
   initialRecords: ContactBookRecord[];
   managedStudentId?: string;
 }) {
+  const initialSelectedDate =
+    user.role === "teacher" && managedStudentId
+      ? initialRecords.find((record) => record.student.id === managedStudentId)?.classDate ?? taipeiToday
+      : initialRecords[0]?.classDate ?? null;
   const [records, setRecords] = useState(initialRecords);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
+  const [createdForStudentId, setCreatedForStudentId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [commentingId, setCommentingId] = useState<string | null>(null);
   const [savedCommentId, setSavedCommentId] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState<string | null>(
-    initialRecords[0]?.classDate ?? null,
+  const [selectedDate, setSelectedDate] = useState<string | null>(initialSelectedDate);
+  const [calendarMonth, setCalendarMonth] = useState(
+    (initialSelectedDate ?? taipeiToday).slice(0, 7),
   );
   const [selectedTeacherId, setSelectedTeacherId] = useState("");
   const [selectedStudentId, setSelectedStudentId] = useState("");
+  const calendarTrackRef = useRef<HTMLDivElement>(null);
   const canManage = user.role !== "student";
   const studentOptions =
     user.role === "student"
@@ -94,18 +115,43 @@ export default function ContactBookPanel({
       : studentOptions;
   const activeStudentId =
     user.role === "teacher" ? managedStudentId ?? "" : selectedStudentId;
+  const activeStudentRecords = activeStudentId
+    ? records.filter((record) => record.student.id === activeStudentId)
+    : [];
+  const calendarDays = getMonthDays(calendarMonth);
+  const [calendarYear, calendarMonthNumber] = calendarMonth.split("-").map(Number);
+  const calendarRecords = user.role === "teacher" ? activeStudentRecords : records;
+  const recordDates = new Set(calendarRecords.map((record) => record.classDate));
+  const selectedDateHasRecord = Boolean(
+    selectedDate && activeStudentRecords.some((record) => record.classDate === selectedDate),
+  );
+  const shouldShowCreateForm =
+    user.role === "admin"
+      ? Boolean(activeStudentId)
+      : user.role === "teacher"
+        ? Boolean(activeStudentId && selectedDate && !selectedDateHasRecord)
+        : false;
   const visibleRecords =
     user.role === "student"
       ? selectedDate
         ? records.filter((record) => record.classDate === selectedDate)
         : records
-      : activeStudentId
-        ? records.filter((record) => record.student.id === activeStudentId)
-        : [];
+      : user.role === "teacher"
+        ? selectedDate
+          ? activeStudentRecords.filter((record) => record.classDate === selectedDate)
+          : activeStudentRecords
+        : activeStudentRecords;
+
+  useEffect(() => {
+    calendarTrackRef.current
+      ?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')
+      ?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+  }, [calendarMonth, selectedDate]);
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPending(true);
+    setCreatedForStudentId(null);
     setMessage("");
     setError("");
     const form = event.currentTarget;
@@ -128,7 +174,8 @@ export default function ContactBookPanel({
         ),
       );
       form.reset();
-      setMessage("聯絡簿已新增。");
+      setCreatedForStudentId(activeStudentId);
+      if (user.role === "teacher") setMessage("聯絡簿已新增。");
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "無法新增聯絡簿");
     } finally {
@@ -238,7 +285,6 @@ export default function ContactBookPanel({
           <p className="section-kicker">LESSON NOTES</p>
           <h2 id="contact-book-title">學生聯絡簿</h2>
         </div>
-        <span className="count-pill">{visibleRecords.length}</span>
       </div>
 
       {user.role === "admin" ? (
@@ -279,29 +325,100 @@ export default function ContactBookPanel({
             </select>
           </label>
         </section>
-      ) : user.role === "student" ? (
-        <section className="student-date-filter" aria-label="依上課日期篩選">
-          <label className="student-date-field">
-            <span>上課日期</span>
-            <input
-              type="date"
-              value={selectedDate ?? ""}
-              onChange={(event) => setSelectedDate(event.target.value || null)}
-            />
-          </label>
-          <p>
-            {selectedDate
-              ? `正在顯示 ${selectedDate} 的聯絡簿`
-              : "目前顯示全部聯絡簿"}
-          </p>
-          <button
-            className="date-filter-show-all"
-            type="button"
-            disabled={!selectedDate}
-            onClick={() => setSelectedDate(null)}
-          >
-            顯示全部
-          </button>
+      ) : user.role === "student" || (user.role === "teacher" && activeStudentId) ? (
+        <section className="student-calendar" aria-label="聯絡簿月曆">
+          <div className="calendar-toolbar">
+            <div>
+              <span className="calendar-eyebrow">上課日期</span>
+              <h3>{calendarYear} 年 {calendarMonthNumber} 月</h3>
+            </div>
+            <div className="calendar-navigation" aria-label="切換月份">
+              <button
+                type="button"
+                aria-label="上一個月"
+                onClick={() => {
+                  setCalendarMonth((current) => shiftMonth(current, -1));
+                  setSelectedDate(null);
+                  setMessage("");
+                }}
+              >
+                ‹
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCalendarMonth(taipeiToday.slice(0, 7));
+                  setSelectedDate(taipeiToday);
+                  setMessage("");
+                }}
+              >
+                今天
+              </button>
+              <button
+                type="button"
+                aria-label="下一個月"
+                onClick={() => {
+                  setCalendarMonth((current) => shiftMonth(current, 1));
+                  setSelectedDate(null);
+                  setMessage("");
+                }}
+              >
+                ›
+              </button>
+            </div>
+          </div>
+          <p className="calendar-swipe-hint">左右滑動選擇日期</p>
+          <div className="calendar-track" ref={calendarTrackRef}>
+            {calendarDays.map((day) => {
+              const date = `${calendarMonth}-${String(day).padStart(2, "0")}`;
+              const weekday = calendarWeekdays[
+                new Date(calendarYear, calendarMonthNumber - 1, day).getDay()
+              ];
+              const hasRecord = recordDates.has(date);
+              const classNames = [
+                "calendar-day",
+                date === taipeiToday ? "is-today" : "",
+                date === selectedDate ? "is-selected" : "",
+                hasRecord ? "has-record" : "",
+              ].filter(Boolean).join(" ");
+              return (
+                <button
+                  className={classNames}
+                  type="button"
+                  key={date}
+                  aria-label={`${date}${hasRecord ? "，有聯絡簿" : "，沒有聯絡簿"}`}
+                  aria-pressed={date === selectedDate}
+                  aria-current={date === taipeiToday ? "date" : undefined}
+                  onClick={() => {
+                    setSelectedDate(date);
+                    setMessage("");
+                  }}
+                >
+                  <span className="calendar-day-weekday">週{weekday}</span>
+                  <strong>{day}</strong>
+                  {hasRecord ? <i aria-hidden="true" /> : null}
+                </button>
+              );
+            })}
+          </div>
+          <div className="calendar-footer">
+            <p>
+              {selectedDate
+                ? `正在顯示 ${selectedDate} 的聯絡簿`
+                : "請選擇日期，或顯示全部聯絡簿"}
+            </p>
+            <button
+              className="date-filter-show-all"
+              type="button"
+              disabled={!selectedDate}
+              onClick={() => {
+                setSelectedDate(null);
+                setMessage("");
+              }}
+            >
+              顯示全部
+            </button>
+          </div>
         </section>
       ) : null}
 
@@ -310,17 +427,29 @@ export default function ContactBookPanel({
 
       {canManage ? (
         studentOptions.length > 0 ? (
-          activeStudentId ? (
-            <form className="contact-book-editor new-contact-book" onSubmit={handleCreate}>
+          shouldShowCreateForm ? (
+            <form
+              key={`${activeStudentId}-${user.role === "teacher" ? selectedDate : "new"}`}
+              className="contact-book-editor new-contact-book"
+              onSubmit={handleCreate}
+              onChange={() => setCreatedForStudentId(null)}
+            >
               <input type="hidden" name="studentId" value={activeStudentId} />
+              {user.role === "teacher" ? (
+                <input type="hidden" name="classDate" value={selectedDate ?? ""} readOnly />
+              ) : null}
               <div className="editor-heading">
-                <h3>新增課後紀錄</h3>
-                <div className="editor-meta-fields date-only">
-                  <label>
-                    <span>上課日期</span>
-                    <input name="classDate" type="date" required defaultValue={taipeiToday} />
-                  </label>
-                </div>
+                <h3>
+                  {user.role === "teacher" ? `新增 ${selectedDate} 課後紀錄` : "新增課後紀錄"}
+                </h3>
+                {user.role === "admin" ? (
+                  <div className="editor-meta-fields date-only">
+                    <label>
+                      <span>上課日期</span>
+                      <input name="classDate" type="date" required defaultValue={taipeiToday} />
+                    </label>
+                  </div>
+                ) : null}
               </div>
               <div className="contact-field-grid">
                 {fields.map((field) => (
@@ -330,9 +459,14 @@ export default function ContactBookPanel({
                   </label>
                 ))}
               </div>
-              <button className="primary-button" type="submit" disabled={pending}>
-                {pending ? "儲存中…" : "新增聯絡簿"}
-              </button>
+              <div className="editor-actions">
+                <button className="secondary-button" type="submit" disabled={pending}>
+                  {pending ? "新增中…" : "新增聯絡簿"}
+                </button>
+                {createdForStudentId === activeStudentId ? (
+                  <span className="inline-save-status" role="status">✓ 已新增</span>
+                ) : null}
+              </div>
             </form>
           ) : null
         ) : (
@@ -340,7 +474,7 @@ export default function ContactBookPanel({
         )
       ) : null}
 
-      {visibleRecords.length === 0 ? (
+      {visibleRecords.length === 0 && !(user.role === "teacher" && activeStudentId && selectedDate) ? (
         <p className="empty-state">
           {user.role === "admin" && !selectedTeacherId
             ? "請先選擇老師，再選擇學生。"

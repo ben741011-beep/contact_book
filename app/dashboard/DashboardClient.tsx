@@ -415,6 +415,7 @@ export default function DashboardClient({
       ) : null}
 
       <ContactBookPanel
+        key={user.role === "teacher" ? selectedAccountId : "contact-books"}
         user={user}
         students={accounts}
         initialRecords={initialContactBooks}
