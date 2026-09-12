@@ -8,7 +8,7 @@ import { getAuthenticatedUser } from "@/lib/auth";
 import {
   CONTACT_BOOK_MEDIA_TYPES,
   MAX_CONTACT_BOOK_MEDIA_SIZE,
-  canUploadContactBookMedia,
+  getContactBookMediaPathPrefix,
 } from "@/models/ContactBook";
 
 function actorFrom(
@@ -34,10 +34,10 @@ export async function POST(
     if (body.type === "blob.generate-presigned-url" && !authorizedUser) {
       return Response.json({ error: "尚未登入" }, { status: 401 });
     }
-    if (
-      authorizedUser &&
-      !(await canUploadContactBookMedia(actorFrom(authorizedUser), id))
-    ) {
+    const expectedPathPrefix = authorizedUser
+      ? await getContactBookMediaPathPrefix(actorFrom(authorizedUser), id)
+      : null;
+    if (authorizedUser && !expectedPathPrefix) {
       return Response.json(
         { error: "找不到聯絡簿或沒有上傳權限" },
         { status: 404 },
@@ -48,8 +48,8 @@ export async function POST(
       body,
       request,
       getSignedToken: async (pathname) => {
-        if (!authorizedUser) throw new Error("尚未登入");
-        if (!pathname.startsWith(`contact-books/${id}/`)) {
+        if (!authorizedUser || !expectedPathPrefix) throw new Error("尚未登入");
+        if (!pathname.startsWith(expectedPathPrefix)) {
           throw new Error("媒體檔案路徑不正確");
         }
 

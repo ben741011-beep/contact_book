@@ -152,6 +152,17 @@ async function main() {
   const teacherRecordId = teacherRecord.body.record.id;
   results.createdContactBooks = recordIds.length;
 
+  const { getContactBookMediaPathPrefix } = await import("../models/ContactBook");
+  const mediaPathPrefix = await getContactBookMediaPathPrefix(
+    { role: "teacher", accountId: teacherId },
+    teacherRecordId,
+  );
+  assert(
+    mediaPathPrefix === `contact-books/${teacherStudentPhone}/2099-01-02/`,
+    "媒體路徑應依學生電話與上課日期建立",
+  );
+  results.mediaPathUsesPhoneAndDate = true;
+
   const duplicate = await createRecord(
     teacherCookie,
     recordInput(teacherStudentId, "2099-01-02"),

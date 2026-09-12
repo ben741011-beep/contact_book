@@ -197,29 +197,32 @@ export default function ContactBookPanel({
   }
 
   async function uploadMediaFiles(
-    recordId: string,
+    record: ContactBookRecord,
     files: File[],
     existingCount: number,
   ) {
     validateMediaFiles(files, existingCount);
-    setUploadingId(recordId);
+    if (!record.student.phone) {
+      throw new Error("學生電話不存在，無法建立媒體資料夾");
+    }
+    setUploadingId(record.id);
     let latestRecord: ContactBookRecord | null = null;
 
     try {
       for (const [index, file] of files.entries()) {
         setUploadProgress({ fileName: file.name, percentage: 0 });
         const extension = file.name.split(".").pop()?.toLowerCase() || "bin";
-        const pathname = `contact-books/${recordId}/media-${Date.now()}-${index}.${extension}`;
+        const pathname = `contact-books/${record.student.phone}/${record.classDate}/media-${Date.now()}-${index}.${extension}`;
         const blob = await uploadPresigned(pathname, file, {
           access: "private",
-          handleUploadUrl: `/api/contact-books/${recordId}/media/upload`,
+          handleUploadUrl: `/api/contact-books/${record.id}/media/upload`,
           contentType: file.type,
           multipart: file.size > 100 * 1024 * 1024,
           onUploadProgress: ({ percentage }) => {
             setUploadProgress({ fileName: file.name, percentage: Math.round(percentage) });
           },
         });
-        const response = await fetch(`/api/contact-books/${recordId}/media`, {
+        const response = await fetch(`/api/contact-books/${record.id}/media`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -237,7 +240,7 @@ export default function ContactBookPanel({
         latestRecord = result.record;
         setRecords((current) =>
           current.map((record) =>
-            record.id === recordId ? result.record! : record,
+            record.id === result.record!.id ? result.record! : record,
           ),
         );
       }
@@ -256,7 +259,7 @@ export default function ContactBookPanel({
     setMessage("");
     setError("");
     try {
-      await uploadMediaFiles(record.id, files, record.media.length);
+      await uploadMediaFiles(record, files, record.media.length);
       if (input) input.value = "";
       setMessage("照片／影片已上傳。");
     } catch (uploadError) {
@@ -325,7 +328,7 @@ export default function ContactBookPanel({
       );
       form.reset();
       if (mediaFiles.length > 0) {
-        await uploadMediaFiles(result.record.id, mediaFiles, 0);
+        await uploadMediaFiles(result.record, mediaFiles, 0);
       }
       setCreatedForStudentId(activeStudentId);
       if (user.role === "teacher" || mediaFiles.length > 0) {

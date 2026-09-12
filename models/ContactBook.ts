@@ -451,12 +451,23 @@ async function findAccessibleContactBook(
   return record;
 }
 
-export async function canUploadContactBookMedia(
+async function mediaPathPrefixForRecord(record: ContactBookDocument) {
+  const accounts = await getAccountsCollection();
+  const student = await accounts.findOne(
+    { _id: record.studentId, role: "student" },
+    { projection: { phone: 1 } },
+  );
+  if (!student) return null;
+  return `contact-books/${student.phone}/${record.classDate}/`;
+}
+
+export async function getContactBookMediaPathPrefix(
   actor: ContactBookActor,
   recordId: string,
 ) {
-  if (actor.role === "student") return false;
-  return Boolean(await findAccessibleContactBook(actor, recordId));
+  if (actor.role === "student") return null;
+  const record = await findAccessibleContactBook(actor, recordId);
+  return record ? mediaPathPrefixForRecord(record) : null;
 }
 
 function parseMediaInput(input: Record<string, unknown>): ContactBookMediaDocument {
@@ -506,7 +517,8 @@ export async function addContactBookMedia(
   }
 
   const media = parseMediaInput(input);
-  if (!media.pathname.startsWith(`contact-books/${recordId}/`)) {
+  const expectedPathPrefix = await mediaPathPrefixForRecord(existing);
+  if (!expectedPathPrefix || !media.pathname.startsWith(expectedPathPrefix)) {
     throw new ContactBookValidationError("媒體檔案與聯絡簿不相符");
   }
 

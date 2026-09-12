@@ -6,6 +6,7 @@ import {
   ContactBookValidationError,
   MAX_CONTACT_BOOK_MEDIA_SIZE,
   addContactBookMedia,
+  getContactBookMediaPathPrefix,
 } from "@/models/ContactBook";
 
 function actorFrom(
@@ -29,9 +30,13 @@ export async function POST(
     }
 
     const { id } = await context.params;
+    const expectedPathPrefix = await getContactBookMediaPathPrefix(actorFrom(user), id);
+    if (!expectedPathPrefix) {
+      return Response.json({ error: "找不到聯絡簿或沒有管理權限" }, { status: 404 });
+    }
     const body = (await request.json()) as Record<string, unknown>;
     const pathname = typeof body.pathname === "string" ? body.pathname : "";
-    if (!pathname.startsWith(`contact-books/${id}/`)) {
+    if (!pathname.startsWith(expectedPathPrefix)) {
       throw new ContactBookValidationError("媒體檔案與聯絡簿不相符");
     }
 
