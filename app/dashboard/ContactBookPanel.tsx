@@ -1,7 +1,6 @@
 "use client";
 
 import { uploadPresigned } from "@vercel/blob/client";
-import Image from "next/image";
 import { FormEvent, useEffect, useRef, useState } from "react";
 
 interface ContactBookUser {
@@ -19,6 +18,14 @@ interface StudentOption {
   assignedTeacherId?: string | null;
 }
 
+interface ContactBookMedia {
+  id: string;
+  contentType: "image/jpeg" | "image/png" | "image/webp" | "video/mp4" | "video/webm";
+  size: number;
+  originalName: string;
+  uploadedAt: string;
+}
+
 export interface ContactBookRecord {
   id: string;
   student: { id: string; name: string | null; phone: string | null };
@@ -28,13 +35,7 @@ export interface ContactBookRecord {
   homework: string;
   nextPreview: string;
   studentComment: string;
-  media: Array<{
-    id: string;
-    contentType: "image/jpeg" | "image/png" | "image/webp" | "video/mp4" | "video/webm";
-    size: number;
-    originalName: string;
-    uploadedAt: string;
-  }>;
+  media: ContactBookMedia[];
   createdAt: string;
   updatedAt: string;
 }
@@ -71,6 +72,47 @@ function formatBytes(size: number) {
 
 function mediaPath(recordId: string, mediaId: string) {
   return `/api/contact-books/${recordId}/media/${mediaId}`;
+}
+
+function ContactBookMediaItem({
+  recordId,
+  media,
+  removing,
+  onRemove,
+}: {
+  recordId: string;
+  media: ContactBookMedia;
+  removing?: boolean;
+  onRemove?: () => void;
+}) {
+  const isImage = media.contentType.startsWith("image/");
+
+  return (
+    <div className="contact-media-item">
+      <a
+        className="media-download-link"
+        href={mediaPath(recordId, media.id)}
+        title={`下載 ${media.originalName}`}
+      >
+        <b aria-hidden="true">{isImage ? "▧" : "▶"}</b>
+        <span>
+          <strong>{media.originalName}</strong>
+          <small>{formatBytes(media.size)}</small>
+        </span>
+        <strong>下載</strong>
+      </a>
+      {onRemove ? (
+        <button
+          className="media-remove-button"
+          type="button"
+          disabled={removing}
+          onClick={onRemove}
+        >
+          {removing ? "移除中…" : "移除"}
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 function shiftMonth(month: string, offset: number) {
@@ -700,36 +742,13 @@ export default function ContactBookPanel({
                     {record.media.length > 0 ? (
                       <div className="contact-media-grid">
                         {record.media.map((media) => (
-                          <figure key={media.id} className="contact-media-item">
-                            {media.contentType.startsWith("image/") ? (
-                              <Image
-                                unoptimized
-                                src={mediaPath(record.id, media.id)}
-                                alt={media.originalName}
-                                width={640}
-                                height={480}
-                              />
-                            ) : (
-                              <video controls preload="metadata">
-                                <source
-                                  src={mediaPath(record.id, media.id)}
-                                  type={media.contentType}
-                                />
-                              </video>
-                            )}
-                            <figcaption>
-                              <span title={media.originalName}>{media.originalName}</span>
-                              <small>{formatBytes(media.size)}</small>
-                              <button
-                                className="media-remove-button"
-                                type="button"
-                                disabled={removingMediaId === media.id}
-                                onClick={() => handleRemoveMedia(record.id, media.id)}
-                              >
-                                {removingMediaId === media.id ? "移除中…" : "移除"}
-                              </button>
-                            </figcaption>
-                          </figure>
+                          <ContactBookMediaItem
+                            key={media.id}
+                            recordId={record.id}
+                            media={media}
+                            removing={removingMediaId === media.id}
+                            onRemove={() => handleRemoveMedia(record.id, media.id)}
+                          />
                         ))}
                       </div>
                     ) : (
@@ -791,28 +810,11 @@ export default function ContactBookPanel({
                     {record.media.length > 0 ? (
                       <div className="contact-media-grid">
                         {record.media.map((media) => (
-                          <figure key={media.id} className="contact-media-item">
-                            {media.contentType.startsWith("image/") ? (
-                              <Image
-                                unoptimized
-                                src={mediaPath(record.id, media.id)}
-                                alt={media.originalName}
-                                width={640}
-                                height={480}
-                              />
-                            ) : (
-                              <video controls preload="metadata">
-                                <source
-                                  src={mediaPath(record.id, media.id)}
-                                  type={media.contentType}
-                                />
-                              </video>
-                            )}
-                            <figcaption>
-                              <span title={media.originalName}>{media.originalName}</span>
-                              <small>{formatBytes(media.size)}</small>
-                            </figcaption>
-                          </figure>
+                          <ContactBookMediaItem
+                            key={media.id}
+                            recordId={record.id}
+                            media={media}
+                          />
                         ))}
                       </div>
                     ) : (

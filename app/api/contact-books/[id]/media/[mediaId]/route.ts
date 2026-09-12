@@ -1,4 +1,9 @@
-import { del, issueSignedToken, presignUrl } from "@vercel/blob";
+import {
+  del,
+  getDownloadUrl,
+  issueSignedToken,
+  presignUrl,
+} from "@vercel/blob";
 
 import { getAuthenticatedUser } from "@/lib/auth";
 import {
@@ -41,7 +46,13 @@ export async function GET(
       access: "private",
       validUntil,
     });
-    return Response.redirect(presignedUrl, 307);
+    return new Response(null, {
+      status: 307,
+      headers: {
+        "Cache-Control": "private, no-store",
+        Location: getDownloadUrl(presignedUrl),
+      },
+    });
   } catch (error) {
     console.error("讀取聯絡簿媒體失敗", error instanceof Error ? error.message : "未知錯誤");
     return Response.json({ error: "無法讀取聯絡簿媒體" }, { status: 500 });

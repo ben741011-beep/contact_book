@@ -169,13 +169,16 @@ label.contact-field { gap: 0.7rem; }
 .contact-media-view { grid-column: 1 / -1; }
 .contact-media-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .contact-media-heading > span { padding: 0.25rem 0.55rem; border-radius: 999px; background: #eee8db; color: #6d573b; font-size: 0.75rem; font-weight: 800; }
-.contact-media-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
-.contact-media-item { min-width: 0; margin: 0; overflow: hidden; border: 1px solid #dfd8ca; border-radius: 0.8rem; background: white; }
-.contact-media-item img, .contact-media-item video { display: block; width: 100%; height: 10rem; background: #18201b; object-fit: cover; }
-.contact-media-item figcaption { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.25rem 0.65rem; padding: 0.65rem; }
-.contact-media-item figcaption span { overflow: hidden; color: #34443b; font-size: 0.82rem; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
-.contact-media-item figcaption small { color: var(--muted); font-size: 0.72rem; }
-.media-remove-button { grid-column: 1 / -1; justify-self: end; padding: 0.25rem 0; border: 0; background: transparent; color: var(--danger); font-size: 0.78rem; font-weight: 800; }
+.contact-media-grid { display: grid; gap: 0.55rem; }
+.contact-media-item { display: flex; min-width: 0; align-items: center; gap: 0.75rem; padding: 0.55rem 0.7rem; border: 1px solid #dfd8ca; border-radius: 0.8rem; background: white; }
+.media-download-link { display: grid; min-width: 0; flex: 1; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.65rem; color: #34443b; text-decoration: none; }
+.media-download-link b { display: inline-grid; width: 2rem; height: 2rem; place-items: center; border-radius: 50%; background: #f1eee7; color: #3f5a4c; }
+.media-download-link span { display: grid; min-width: 0; gap: 0.15rem; }
+.media-download-link span strong { overflow: hidden; font-size: 0.86rem; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.media-download-link small { color: var(--muted); font-size: 0.72rem; }
+.media-download-link > strong { color: var(--accent); font-size: 0.8rem; }
+.media-download-link:hover span strong, .media-download-link:focus-visible span strong { text-decoration: underline; }
+.media-remove-button { padding: 0.25rem 0; border: 0; background: transparent; color: var(--danger); font-size: 0.78rem; font-weight: 800; }
 .contact-media-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.65rem; }
 .contact-media-empty { margin: 0; padding: 1rem; border: 1px dashed #d8d0c2; border-radius: 0.7rem; color: var(--muted); text-align: center; }
 .contact-book-view { padding: 1.2rem; }
@@ -200,7 +203,6 @@ label.contact-field { gap: 0.7rem; }
   .teacher-assignment-form label { grid-column: 1 / -1; }
   .editor-heading { align-items: stretch; flex-direction: column; }
   .editor-meta-fields, .contact-field-grid { grid-template-columns: 1fr; }
-  .contact-media-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .contact-card-header { align-items: flex-start; flex-direction: column; }
   .contact-book-filters { grid-template-columns: 1fr; }
   .student-calendar { padding: 0.85rem; }
