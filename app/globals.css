@@ -1,26 +1,154 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --ink: #17211b;
+  --muted: #66736b;
+  --paper: #f5f2e9;
+  --surface: #fffdf8;
+  --line: #ded9cc;
+  --forest: #244c3a;
+  --forest-dark: #173428;
+  --gold: #ba8748;
+  --danger: #a63f36;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+* { box-sizing: border-box; }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  background:
+    radial-gradient(circle at top left, rgba(186, 135, 72, 0.13), transparent 28rem),
+    var(--paper);
+  color: var(--ink);
+  font-family: Arial, "Noto Sans TC", sans-serif;
+}
+
+button, input, select { font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: wait; opacity: 0.65; }
+
+.auth-shell, .dashboard-shell { min-height: 100vh; }
+.auth-shell { display: grid; place-items: center; padding: 2rem 1.25rem; }
+.auth-card {
+  width: min(100%, 28rem);
+  padding: 2.5rem;
+  border: 1px solid var(--line);
+  border-radius: 1.5rem;
+  background: rgba(255, 253, 248, 0.94);
+  box-shadow: 0 1.5rem 4rem rgba(36, 76, 58, 0.12);
+}
+.brand-mark {
+  display: grid; place-items: center; width: 3rem; height: 3rem;
+  border-radius: 0.85rem; margin-bottom: 1.75rem;
+  background: var(--forest); color: white; font-weight: 700; font-size: 1.25rem;
+}
+.eyebrow, .section-kicker { margin: 0 0 0.45rem; color: var(--gold); font-size: 0.72rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; }
+h1, h2, p { margin-top: 0; }
+.auth-card h1, .topbar h1 { margin-bottom: 0.65rem; letter-spacing: -0.03em; }
+.subtle, .welcome-copy, .account-meta small { color: var(--muted); line-height: 1.7; }
+.stack-form { display: grid; gap: 1rem; margin-top: 1.75rem; }
+label { display: grid; gap: 0.45rem; color: #34443b; font-size: 0.9rem; font-weight: 700; }
+input, select {
+  width: 100%; border: 1px solid var(--line); border-radius: 0.75rem;
+  background: white; color: var(--ink); padding: 0.78rem 0.9rem; outline: none;
+}
+input:focus, select:focus { border-color: var(--forest); box-shadow: 0 0 0 3px rgba(36, 76, 58, 0.12); }
+.primary-button, .secondary-button, .ghost-button, .danger-button { border: 0; border-radius: 0.75rem; font-weight: 800; transition: 150ms ease; }
+.primary-button { padding: 0.85rem 1rem; background: var(--forest); color: white; }
+.primary-button:hover { background: var(--forest-dark); transform: translateY(-1px); }
+.secondary-button { padding: 0.68rem 0.9rem; background: #e6eee9; color: var(--forest-dark); }
+.danger-button { padding: 0.68rem 0.9rem; background: #f8e5e2; color: var(--danger); }
+.danger-button:hover { background: #f2d4d0; }
+.ghost-button { padding: 0.72rem 1rem; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+.form-error, .form-success { margin: 0; padding: 0.75rem 0.85rem; border-radius: 0.65rem; font-size: 0.88rem; }
+.form-error { background: #fbe9e7; color: var(--danger); }
+.form-success { background: #e8f3eb; color: #24613c; }
+.dashboard-shell { width: min(100% - 2rem, 74rem); margin: 0 auto; padding: 2rem 0 4rem; }
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 2rem; }
+.topbar h1 { font-size: clamp(1.65rem, 4vw, 2.25rem); }
+.welcome-card, .panel { border: 1px solid var(--line); background: rgba(255, 253, 248, 0.94); box-shadow: 0 1rem 3rem rgba(36, 76, 58, 0.07); }
+.welcome-card { display: flex; align-items: end; justify-content: space-between; gap: 2rem; margin-bottom: 1.25rem; padding: 1.75rem; border-radius: 1.25rem; }
+.welcome-card h2 { margin: 0.75rem 0 0.3rem; font-size: 1.55rem; }
+.welcome-card p { margin-bottom: 0; }
+.welcome-copy { max-width: 34rem; }
+.dashboard-grid { display: grid; grid-template-columns: minmax(16rem, 0.72fr) minmax(0, 1.5fr); gap: 1.25rem; align-items: start; }
+.panel { padding: 1.5rem; border-radius: 1.25rem; }
+.panel h2 { margin-bottom: 0; }
+.section-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.count-pill { min-width: 2.2rem; padding: 0.35rem 0.6rem; border-radius: 999px; background: #efe9da; color: #745126; text-align: center; font-weight: 800; }
+.account-list { display: grid; gap: 0.75rem; margin-top: 1.2rem; }
+.account-row { display: grid; grid-template-columns: minmax(9rem, 1fr) minmax(15rem, 1.4fr); align-items: center; gap: 1rem; padding: 1rem; border: 1px solid #e8e3d7; border-radius: 0.9rem; background: white; }
+.account-meta { display: grid; justify-items: start; gap: 0.28rem; }
+.role-badge { display: inline-flex; width: fit-content; padding: 0.25rem 0.55rem; border-radius: 999px; font-size: 0.7rem; font-weight: 800; }
+.role-admin { background: #efe1cf; color: #7a4d1b; }
+.role-teacher { background: #dfece5; color: #23563d; }
+.role-student { background: #e6e8f2; color: #3d466c; }
+.name-form { display: grid; grid-template-columns: 1fr auto; gap: 0.55rem; }
+.account-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.55rem; align-items: center; }
+.teacher-assignment-form { grid-column: 1 / -1; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 0.55rem; }
+.empty-state { margin: 1.5rem 0 0; padding: 2rem; border: 1px dashed var(--line); border-radius: 0.9rem; color: var(--muted); text-align: center; }
+.contact-book-section { margin-top: 1.25rem; padding: 1.5rem; border: 1px solid var(--line); border-radius: 1.25rem; background: rgba(255, 253, 248, 0.94); box-shadow: 0 1rem 3rem rgba(36, 76, 58, 0.07); }
+.contact-book-heading { margin-bottom: 1.25rem; }
+.contact-book-heading h2, .editor-heading h3 { margin-bottom: 0; }
+.student-date-filter { display: flex; align-items: end; gap: 1rem; margin-bottom: 1.25rem; padding: 1rem; border: 1px dashed #d7cebd; border-radius: 1rem; background: #faf8f1; }
+.student-date-field { flex: 0 0 12rem; }
+.student-date-field > span { color: var(--forest-dark); font-weight: 900; }
+.student-date-field input { background: white; font-weight: 700; }
+.student-date-filter p { flex: 1; margin: 0 0 0.75rem; color: #49574e; font-size: 0.86rem; }
+.date-filter-show-all { margin-bottom: 0.58rem; border: 0; background: transparent; color: var(--forest); font-size: 0.85rem; font-weight: 900; white-space: nowrap; }
+.date-filter-show-all:disabled { cursor: default; opacity: 0.4; }
+.contact-book-editor { display: grid; gap: 1rem; }
+.new-contact-book { margin-bottom: 1.25rem; padding: 1.25rem; border: 1px dashed #c9c1ae; border-radius: 1rem; background: #faf7ef; }
+.editor-heading { display: flex; align-items: end; justify-content: space-between; gap: 1rem; }
+.editor-meta-fields { display: grid; grid-template-columns: minmax(13rem, 1.4fr) minmax(10rem, 1fr); gap: 0.75rem; }
+.contact-book-list { display: grid; gap: 1.25rem; }
+.contact-book-card { overflow: hidden; border: 1px solid #ddd6c8; border-radius: 1.1rem; background: #fffdfa; }
+.contact-card-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.2rem; background: linear-gradient(135deg, #eef1e7, #f4eee2); }
+.contact-card-header div { display: grid; gap: 0.2rem; }
+.contact-card-header small { color: var(--muted); }
+.contact-card-header time { padding: 0.55rem 0.85rem; border-radius: 999px; background: rgba(255, 253, 248, 0.8); color: #39483d; font-size: 0.85rem; font-weight: 800; }
+.contact-student-name { color: var(--forest-dark); font-size: 1.1rem; font-weight: 900; }
+.contact-book-card .contact-book-editor { padding: 1.2rem; }
+.date-field { max-width: 14rem; }
+.contact-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.9rem; }
+.contact-field { min-width: 0; padding: 1rem; border: 1px solid #e7e0d3; border-radius: 0.9rem; background: #fbf9f4; }
+label.contact-field { gap: 0.7rem; }
+.contact-field > span, .contact-field h3 { display: flex; align-items: center; gap: 0.55rem; margin: 0; color: var(--forest); font-size: 1rem; font-weight: 900; }
+.contact-field b { display: inline-grid; place-items: center; flex: 0 0 1.8rem; height: 1.8rem; border-radius: 50%; background: #78856a; color: white; font-size: 0.9rem; }
+.contact-field textarea { min-height: 7.5rem; resize: vertical; border: 1px solid #dcd5c7; border-radius: 0.7rem; padding: 0.75rem; background: white; color: var(--ink); line-height: 1.65; outline: none; }
+.contact-field textarea:focus { border-color: var(--forest); box-shadow: 0 0 0 3px rgba(36, 76, 58, 0.1); }
+.contact-book-view { padding: 1.2rem; }
+.contact-book-view .contact-field p { margin: 0.8rem 0 0; color: #3f4942; line-height: 1.75; white-space: pre-wrap; }
+.student-comment-field { grid-column: 1 / -1; }
+.student-comment-field p { margin: 0.8rem 0 0; color: #3f4942; line-height: 1.75; white-space: pre-wrap; }
+.student-comment-form { display: grid; gap: 0.75rem; }
+.student-comment-form label { display: flex; align-items: center; gap: 0.55rem; color: var(--forest); font-size: 1rem; font-weight: 900; }
+.student-comment-form label b { display: inline-grid; place-items: center; flex: 0 0 1.8rem; height: 1.8rem; border-radius: 50%; background: #b07b36; color: white; font-size: 0.9rem; }
+.student-comment-actions { display: flex; align-items: center; justify-content: flex-end; gap: 0.65rem; }
+.editor-actions { display: flex; align-items: center; justify-content: flex-end; gap: 0.65rem; }
+.inline-save-status { color: #2f6b45; font-size: 0.9rem; font-weight: 800; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+@media (max-width: 760px) {
+  .auth-card { padding: 1.6rem; }
+  .dashboard-shell { width: min(100% - 1.25rem, 74rem); padding-top: 1.25rem; }
+  .dashboard-grid { grid-template-columns: 1fr; }
+  .welcome-card { display: grid; gap: 1rem; }
+  .account-row { grid-template-columns: 1fr; }
+  .teacher-assignment-form { grid-template-columns: 1fr auto; }
+  .teacher-assignment-form label { grid-column: 1 / -1; }
+  .editor-heading { align-items: stretch; flex-direction: column; }
+  .editor-meta-fields, .contact-field-grid { grid-template-columns: 1fr; }
+  .contact-card-header { align-items: flex-start; flex-direction: column; }
+  .student-date-filter { align-items: stretch; flex-direction: column; }
+  .student-date-field { flex-basis: auto; width: min(100%, 14rem); }
+  .student-date-filter p, .date-filter-show-all { margin: 0; }
+  .date-filter-show-all { align-self: flex-start; padding: 0.45rem 0; }
+}
+
+@media (max-width: 440px) {
+  .name-form, .account-actions { grid-template-columns: 1fr; }
+  .topbar { align-items: flex-start; }
+  .contact-book-section { padding: 1rem; }
+  .editor-actions { display: grid; }
 }
