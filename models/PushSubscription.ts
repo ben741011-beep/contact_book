@@ -106,7 +106,7 @@ function parseSubscription(input: Record<string, unknown>) {
       : {};
   const p256dh = typeof keys.p256dh === "string" ? keys.p256dh.trim() : "";
   const auth = typeof keys.auth === "string" ? keys.auth.trim() : "";
-  const expirationTime = input.expirationTime;
+  const expirationTime = input.expirationTime ?? null;
 
   let parsedEndpoint: URL;
   try {
@@ -127,7 +127,7 @@ function parseSubscription(input: Record<string, unknown>) {
     throw new PushSubscriptionValidationError("推播訂閱到期時間不正確");
   }
 
-  return { endpoint, expirationTime: expirationTime as number | null, keys: { p256dh, auth } };
+  return { endpoint, expirationTime, keys: { p256dh, auth } };
 }
 
 export async function savePushSubscription(

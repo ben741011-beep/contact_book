@@ -34,13 +34,20 @@ async function main() {
       `https://push.example.test/${crypto.randomUUID()}`,
       `https://push.example.test/${crypto.randomUUID()}`,
     ];
-    for (const endpoint of endpoints) {
+    for (const [index, endpoint] of endpoints.entries()) {
       await savePushSubscription(created.account.id, {
         endpoint,
-        expirationTime: null,
+        ...(index === 0 ? {} : { expirationTime: null }),
         keys: { p256dh: "mock-p256dh", auth: "mock-auth" },
       });
     }
+    const subscriptionWithoutExpiration = await subscriptions.findOne({
+      endpoint: endpoints[0],
+    });
+    assert(
+      subscriptionWithoutExpiration?.expirationTime === null,
+      "缺省的 expirationTime 應正規化為 null",
+    );
 
     const partialDocument = buildNotificationDocument({
       requestId: crypto.randomUUID(),
