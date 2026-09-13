@@ -26,6 +26,17 @@ interface ContactBookMedia {
   uploadedAt: string;
 }
 
+interface NotificationSummary {
+  id: string;
+  kind: "published" | "updated";
+  status: "pending" | "sent" | "partial" | "failed" | "no_subscription";
+  sentCount: number;
+  failedCount: number;
+  attemptCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ContactBookRecord {
   id: string;
   student: { id: string; name: string | null; phone: string | null };
@@ -36,6 +47,9 @@ export interface ContactBookRecord {
   nextPreview: string;
   studentComment: string;
   media: ContactBookMedia[];
+  status: "draft" | "published";
+  publishedAt: string | null;
+  notification: NotificationSummary | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -72,6 +86,17 @@ function formatBytes(size: number) {
 
 function mediaPath(recordId: string, mediaId: string) {
   return `/api/contact-books/${recordId}/media/${mediaId}`;
+}
+
+function notificationLabel(notification: NotificationSummary | null) {
+  if (!notification) return "尚未發送通知";
+  if (notification.status === "sent") return `已送出至 ${notification.sentCount} 台裝置`;
+  if (notification.status === "partial") {
+    return `已送出 ${notification.sentCount} 台，${notification.failedCount} 台失敗`;
+  }
+  if (notification.status === "no_subscription") return "學生尚未啟用通知";
+  if (notification.status === "pending") return "通知處理中";
+  return "通知發送失敗";
 }
 
 function ContactBookMediaItem({
@@ -167,6 +192,9 @@ export default function ContactBookPanel({
     percentage: number;
   } | null>(null);
   const [removingMediaId, setRemovingMediaId] = useState<string | null>(null);
+  const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [notifyingId, setNotifyingId] = useState<string | null>(null);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(initialSelectedDate);
   const [calendarMonth, setCalendarMonth] = useState(
     (initialSelectedDate ?? taipeiToday).slice(0, 7),
@@ -174,6 +202,7 @@ export default function ContactBookPanel({
   const [selectedTeacherId, setSelectedTeacherId] = useState("");
   const [selectedStudentId, setSelectedStudentId] = useState("");
   const calendarTrackRef = useRef<HTMLDivElement>(null);
+  const updateNotificationRequestIds = useRef(new Map<string, string>());
   const canManage = user.role !== "student";
   const studentOptions =
     user.role === "student"
@@ -375,13 +404,91 @@ export default function ContactBookPanel({
       setCreatedForStudentId(activeStudentId);
       if (user.role === "teacher" || mediaFiles.length > 0) {
         setMessage(
-          mediaFiles.length > 0 ? "聯絡簿與照片／影片已新增。" : "聯絡簿已新增。",
+          mediaFiles.length > 0 ? "草稿與照片／影片已建立。" : "聯絡簿草稿已建立。",
         );
       }
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "無法新增聯絡簿");
     } finally {
       setPending(false);
+    }
+  }
+
+  async function handlePublish(record: ContactBookRecord) {
+    if (!window.confirm(`確定發布 ${record.classDate} 的聯絡簿並通知學生？`)) return;
+    setPublishingId(record.id);
+    setMessage("");
+    setError("");
+    try {
+      const response = await fetch(`/api/contact-books/${record.id}/publish`, { method: "POST" });
+      const result = (await response.json()) as { record?: ContactBookRecord; error?: string };
+      if (!response.ok || !result.record) throw new Error(result.error ?? "無法發布聯絡簿");
+      setRecords((current) =>
+        current.map((item) => (item.id === record.id ? result.record! : item)),
+      );
+      setMessage(`聯絡簿已發布；${notificationLabel(result.record.notification)}。`);
+    } catch (publishError) {
+      setError(publishError instanceof Error ? publishError.message : "無法發布聯絡簿");
+    } finally {
+      setPublishingId(null);
+    }
+  }
+
+  async function handleNotifyUpdate(record: ContactBookRecord) {
+    setNotifyingId(record.id);
+    setMessage("");
+    setError("");
+    try {
+      const requestId =
+        updateNotificationRequestIds.current.get(record.id) ?? crypto.randomUUID();
+      updateNotificationRequestIds.current.set(record.id, requestId);
+      const response = await fetch(`/api/contact-books/${record.id}/notifications`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId }),
+      });
+      const result = (await response.json()) as { notification?: NotificationSummary; error?: string };
+      if (!response.ok || !result.notification) {
+        throw new Error(result.error ?? "無法通知學生更新");
+      }
+      setRecords((current) =>
+        current.map((item) =>
+          item.id === record.id ? { ...item, notification: result.notification! } : item,
+        ),
+      );
+      setMessage(`更新通知已處理；${notificationLabel(result.notification)}。`);
+      updateNotificationRequestIds.current.delete(record.id);
+    } catch (notifyError) {
+      setError(notifyError instanceof Error ? notifyError.message : "無法通知學生更新");
+    } finally {
+      setNotifyingId(null);
+    }
+  }
+
+  async function handleRetryNotification(record: ContactBookRecord) {
+    if (!record.notification) return;
+    setRetryingId(record.id);
+    setMessage("");
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/contact-books/${record.id}/notifications/${record.notification.id}/retry`,
+        { method: "POST" },
+      );
+      const result = (await response.json()) as { notification?: NotificationSummary; error?: string };
+      if (!response.ok || !result.notification) {
+        throw new Error(result.error ?? "無法重試通知");
+      }
+      setRecords((current) =>
+        current.map((item) =>
+          item.id === record.id ? { ...item, notification: result.notification! } : item,
+        ),
+      );
+      setMessage(`通知已重試；${notificationLabel(result.notification)}。`);
+    } catch (retryError) {
+      setError(retryError instanceof Error ? retryError.message : "無法重試通知");
+    } finally {
+      setRetryingId(null);
     }
   }
 
@@ -677,10 +784,10 @@ export default function ContactBookPanel({
                     ? uploadProgress
                       ? `上傳 ${uploadProgress.fileName} ${uploadProgress.percentage}%`
                       : "新增中…"
-                    : "新增聯絡簿"}
+                    : "建立草稿"}
                 </button>
                 {createdForStudentId === activeStudentId ? (
-                  <span className="inline-save-status" role="status">✓ 已新增</span>
+                  <span className="inline-save-status" role="status">✓ 草稿已建立</span>
                 ) : null}
               </div>
             </form>
@@ -712,6 +819,11 @@ export default function ContactBookPanel({
                     {record.student.name ?? "尚未設定姓名"}
                   </span>
                   <small>{record.student.phone ?? "學生帳號已刪除"}</small>
+                  {canManage ? (
+                    <span className={`publication-badge is-${record.status}`}>
+                      {record.status === "draft" ? "草稿" : "已發布"}
+                    </span>
+                  ) : null}
                 </div>
                 <time dateTime={record.classDate}>上課日期　{record.classDate}</time>
               </header>
@@ -775,6 +887,25 @@ export default function ContactBookPanel({
                     </div>
                   </section>
                   <div className="editor-actions">
+                    {record.status === "draft" ? (
+                      <button
+                        className="primary-button"
+                        type="button"
+                        disabled={publishingId === record.id || uploadingId === record.id}
+                        onClick={() => handlePublish(record)}
+                      >
+                        {publishingId === record.id ? "發布中…" : "發布並通知"}
+                      </button>
+                    ) : (
+                      <button
+                        className="primary-button"
+                        type="button"
+                        disabled={notifyingId === record.id}
+                        onClick={() => handleNotifyUpdate(record)}
+                      >
+                        {notifyingId === record.id ? "通知中…" : "通知學生更新"}
+                      </button>
+                    )}
                     <button
                       className="secondary-button"
                       type="submit"
@@ -784,6 +915,22 @@ export default function ContactBookPanel({
                     </button>
                     {savedId === record.id ? (
                       <span className="inline-save-status" role="status">✓ 已儲存</span>
+                    ) : null}
+                    {record.status === "published" ? (
+                      <span className={`notification-status is-${record.notification?.status ?? "none"}`}>
+                        {notificationLabel(record.notification)}
+                      </span>
+                    ) : null}
+                    {record.notification &&
+                    ["partial", "failed", "no_subscription"].includes(record.notification.status) ? (
+                      <button
+                        className="ghost-button"
+                        type="button"
+                        disabled={retryingId === record.id}
+                        onClick={() => handleRetryNotification(record)}
+                      >
+                        {retryingId === record.id ? "重試中…" : "重試通知"}
+                      </button>
                     ) : null}
                     <button
                       className="danger-button"

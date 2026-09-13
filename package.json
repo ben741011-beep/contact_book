@@ -10,7 +10,8 @@
     "db:init": "tsx scripts/init-accounts.ts && tsx scripts/init-contact-books.ts",
     "db:init:contact-books": "tsx scripts/init-contact-books.ts",
     "test:e2e": "tsx scripts/e2e-auth.ts",
-    "test:e2e:contact-books": "tsx scripts/e2e-contact-books.ts"
+    "test:e2e:contact-books": "tsx scripts/e2e-contact-books.ts",
+    "test:e2e:push": "tsx scripts/e2e-push-notifications.ts"
   },
   "dependencies": {
     "@vercel/blob": "^2.8.0",
@@ -19,13 +20,15 @@
     "mongodb": "^7.6.0",
     "next": "16.3.4",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/web-push": "^3.6.4",
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
     "tailwindcss": "^4",

@@ -1,7 +1,16 @@
 import { Collection, Document, MongoServerError, ObjectId } from "mongodb";
 
-import { getDatabase } from "@/lib/mongodb";
+import { getDatabase, getMongoClient } from "@/lib/mongodb";
 import { getAccountsCollection, type SessionRole } from "@/models/Account";
+import {
+  buildNotificationDocument,
+  deliverContactBookNotification,
+  ensureContactBookNotificationsCollection,
+  getContactBookNotificationsCollection,
+  latestNotificationsForContactBooks,
+  serializeNotification,
+  type PublicNotificationSummary,
+} from "@/models/ContactBookNotification";
 
 export const CONTACT_BOOKS_COLLECTION = "contactBooks";
 export const CONTACT_BOOK_MEDIA_TYPES = [
@@ -40,6 +49,8 @@ export interface ContactBookDocument extends Document {
   nextPreview: string;
   studentComment: string;
   media: ContactBookMediaDocument[];
+  status: "draft" | "published";
+  publishedAt: Date | null;
   createdByRole: "admin" | "teacher";
   createdByAccountId: ObjectId | null;
   createdAt: Date;
@@ -62,6 +73,9 @@ export interface PublicContactBook {
     originalName: string;
     uploadedAt: string;
   }>;
+  status: "draft" | "published";
+  publishedAt: string | null;
+  notification: PublicNotificationSummary | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -80,6 +94,8 @@ export const contactBooksValidator = {
       "nextPreview",
       "studentComment",
       "media",
+      "status",
+      "publishedAt",
       "createdByRole",
       "createdByAccountId",
       "createdAt",
@@ -121,6 +137,8 @@ export const contactBooksValidator = {
           },
         },
       },
+      status: { enum: ["draft", "published"] },
+      publishedAt: { bsonType: ["date", "null"] },
       createdByRole: { enum: ["admin", "teacher"] },
       createdByAccountId: { bsonType: ["objectId", "null"] },
       createdAt: { bsonType: "date" },
@@ -150,7 +168,11 @@ export async function ensureContactBooksCollection() {
       $jsonSchema: {
         ...contactBooksValidator.$jsonSchema,
         required: contactBooksValidator.$jsonSchema.required.filter(
-          (field) => field !== "studentComment" && field !== "media",
+          (field) =>
+            field !== "studentComment" &&
+            field !== "media" &&
+            field !== "status" &&
+            field !== "publishedAt",
         ),
       },
     };
@@ -169,6 +191,12 @@ export async function ensureContactBooksCollection() {
     await database
       .collection<ContactBookDocument>(CONTACT_BOOKS_COLLECTION)
       .updateMany({ media: { $exists: false } }, { $set: { media: [] } });
+    await database
+      .collection<ContactBookDocument>(CONTACT_BOOKS_COLLECTION)
+      .updateMany(
+        { status: { $exists: false } },
+        [{ $set: { status: "published", publishedAt: "$createdAt" } }],
+      );
     await database.command({
       collMod: CONTACT_BOOKS_COLLECTION,
       validator: contactBooksValidator,
@@ -264,6 +292,9 @@ async function serializeContactBooks(records: ContactBookDocument[]) {
         .toArray()
     : [];
   const studentMap = new Map(students.map((student) => [student._id.toHexString(), student]));
+  const notifications = await latestNotificationsForContactBooks(
+    records.map((record) => record._id),
+  );
 
   return records.map<PublicContactBook>((record) => {
     const studentId = record.studentId.toHexString();
@@ -288,6 +319,9 @@ async function serializeContactBooks(records: ContactBookDocument[]) {
         originalName: item.originalName,
         uploadedAt: item.uploadedAt.toISOString(),
       })),
+      status: record.status,
+      publishedAt: record.publishedAt?.toISOString() ?? null,
+      notification: notifications.get(record._id.toHexString()) ?? null,
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
     };
@@ -300,7 +334,10 @@ export async function listContactBooksFor(actor: ContactBookActor) {
 
   if (actor.role === "student") {
     if (!actor.accountId) return [];
-    filter = { studentId: new ObjectId(actor.accountId) };
+    filter = {
+      studentId: new ObjectId(actor.accountId),
+      status: "published",
+    };
   } else if (actor.role === "teacher") {
     if (!actor.accountId) return [];
     const accounts = await getAccountsCollection();
@@ -338,6 +375,8 @@ export async function createContactBook(
     ...values,
     studentComment: "",
     media: [],
+    status: "draft",
+    publishedAt: null,
     createdByRole: actor.role,
     createdByAccountId:
       actor.role === "teacher" ? new ObjectId(actor.accountId!) : null,
@@ -378,13 +417,13 @@ export async function updateStudentComment(
   const _id = new ObjectId(recordId);
   const studentId = new ObjectId(actor.accountId);
   const expectedCount = await collection.countDocuments(
-    { _id, studentId },
+    { _id, studentId, status: "published" },
     { limit: 1 },
   );
   if (expectedCount !== 1) return null;
 
   const result = await collection.updateOne(
-    { _id, studentId },
+    { _id, studentId, status: "published" },
     {
       $set: {
         studentComment: parseSection(input.studentComment, "學生留言"),
@@ -438,7 +477,7 @@ export async function updateContactBook(
   }
 }
 
-async function findAccessibleContactBook(
+export async function findAccessibleContactBook(
   actor: ContactBookActor,
   recordId: string,
 ) {
@@ -448,7 +487,131 @@ async function findAccessibleContactBook(
   const collection = await getContactBooksCollection();
   const record = await collection.findOne({ _id: new ObjectId(recordId) });
   if (!record || !(await findManagedStudent(actor, record.studentId))) return null;
+  if (actor.role === "student" && record.status !== "published") return null;
   return record;
+}
+
+export async function findManageableContactBook(
+  actor: ContactBookActor,
+  recordId: string,
+) {
+  if (actor.role === "student") {
+    throw new ContactBookValidationError("學生沒有管理聯絡簿的權限");
+  }
+  return findAccessibleContactBook(actor, recordId);
+}
+
+function notificationActor(actor: ContactBookActor) {
+  if (actor.role === "student") {
+    throw new ContactBookValidationError("學生沒有發送通知的權限");
+  }
+  return {
+    requestedByRole: actor.role,
+    requestedByAccountId:
+      actor.role === "teacher" ? new ObjectId(actor.accountId!) : null,
+  } as const;
+}
+
+export async function publishContactBook(
+  actor: ContactBookActor,
+  recordId: string,
+) {
+  const record = await findManageableContactBook(actor, recordId);
+  if (!record) return null;
+  await ensureContactBookNotificationsCollection();
+  const notifications = await getContactBookNotificationsCollection();
+  const eventKey = `published:${record._id.toHexString()}:${record._id.toHexString()}`;
+
+  if (record.status === "published") {
+    const existingNotification = await notifications.findOne({ eventKey });
+    const current = await getContactBooksCollection().then((collection) =>
+      collection.findOne({ _id: record._id }),
+    );
+    if (!current) return null;
+    return {
+      record: (await serializeContactBooks([current]))[0],
+      notification: existingNotification ? serializeNotification(existingNotification) : null,
+      alreadyPublished: true,
+    };
+  }
+
+  const client = await getMongoClient();
+  const session = client.startSession();
+  let notificationId: ObjectId | null = null;
+  try {
+    await session.withTransaction(async () => {
+      const contactBooks = await getContactBooksCollection();
+      const now = new Date();
+      const update = await contactBooks.updateOne(
+        { _id: record._id, status: "draft" },
+        { $set: { status: "published", publishedAt: now, updatedAt: now } },
+        { session },
+      );
+      if (update.modifiedCount !== 1) {
+        throw new ContactBookConflictError("聯絡簿已發布，請重新整理");
+      }
+      const document = buildNotificationDocument({
+        requestId: record._id.toHexString(),
+        contactBookId: record._id,
+        studentId: record.studentId,
+        classDate: record.classDate,
+        kind: "published",
+        ...notificationActor(actor),
+      });
+      const inserted = await notifications.insertOne(document, { session });
+      notificationId = inserted.insertedId;
+    });
+  } finally {
+    await session.endSession();
+  }
+  if (!notificationId) throw new Error("發布聯絡簿後找不到通知紀錄");
+  const notification = await deliverContactBookNotification(notificationId);
+  const current = await getContactBooksCollection().then((collection) =>
+    collection.findOne({ _id: record._id }),
+  );
+  if (!current) throw new Error("發布聯絡簿後無法查回資料");
+  return {
+    record: (await serializeContactBooks([current]))[0],
+    notification,
+    alreadyPublished: false,
+  };
+}
+
+export async function notifyContactBookUpdate(
+  actor: ContactBookActor,
+  recordId: string,
+  requestIdInput: unknown,
+) {
+  const record = await findManageableContactBook(actor, recordId);
+  if (!record) return null;
+  if (record.status !== "published") {
+    throw new ContactBookValidationError("草稿必須先發布才能通知學生");
+  }
+  const requestId = typeof requestIdInput === "string" ? requestIdInput : "";
+  const collection = await ensureContactBookNotificationsCollection();
+  const document = buildNotificationDocument({
+    requestId,
+    contactBookId: record._id,
+    studentId: record.studentId,
+    classDate: record.classDate,
+    kind: "updated",
+    ...notificationActor(actor),
+  });
+  let notification = await collection.findOne({ eventKey: document.eventKey });
+  if (!notification) {
+    try {
+      const inserted = await collection.insertOne(document);
+      notification = await collection.findOne({ _id: inserted.insertedId });
+    } catch (error) {
+      if (error instanceof MongoServerError && error.code === 11000) {
+        notification = await collection.findOne({ eventKey: document.eventKey });
+      } else {
+        throw error;
+      }
+    }
+  }
+  if (!notification) throw new Error("建立更新通知後無法查回資料");
+  return deliverContactBookNotification(notification._id);
 }
 
 async function mediaPathPrefixForRecord(record: ContactBookDocument) {

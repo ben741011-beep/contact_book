@@ -96,8 +96,16 @@ function forgetRecord(id: string) {
 async function cleanup() {
   const { getAccountsCollection } = await import("../models/Account");
   const { getContactBooksCollection } = await import("../models/ContactBook");
+  const { getContactBookNotificationsCollection } = await import(
+    "../models/ContactBookNotification"
+  );
+  const { getPushSubscriptionsCollection } = await import(
+    "../models/PushSubscription"
+  );
   const contactBooks = await getContactBooksCollection();
   const accounts = await getAccountsCollection();
+  const notifications = await getContactBookNotificationsCollection();
+  const subscriptions = await getPushSubscriptionsCollection();
 
   if (recordIds.length > 0) {
     const expected = await contactBooks.countDocuments({ _id: { $in: recordIds } });
@@ -105,6 +113,24 @@ async function cleanup() {
     const result = await contactBooks.deleteMany({ _id: { $in: recordIds } });
     assert(result.deletedCount === recordIds.length, "聯絡簿測試資料未完整清理");
     results.cleanedContactBooks = result.deletedCount;
+  }
+
+  if (accountIds.length > 0) {
+    const notificationFilter = { studentId: { $in: accountIds } };
+    const expectedNotifications = await notifications.countDocuments(notificationFilter);
+    const notificationResult = await notifications.deleteMany(notificationFilter);
+    assert(
+      notificationResult.deletedCount === expectedNotifications,
+      "通知測試資料未完整清理",
+    );
+    const subscriptionFilter = { studentId: { $in: accountIds } };
+    const expectedSubscriptions = await subscriptions.countDocuments(subscriptionFilter);
+    const subscriptionResult = await subscriptions.deleteMany(subscriptionFilter);
+    assert(
+      subscriptionResult.deletedCount === expectedSubscriptions,
+      "推播訂閱測試資料未完整清理",
+    );
+    results.cleanedNotifications = notificationResult.deletedCount;
   }
 
   if (accountIds.length > 0) {
@@ -141,14 +167,24 @@ async function main() {
     adminCookie,
     recordInput(adminStudentId, "2099-01-01"),
   );
-  assert(adminRecord.response.status === 201 && adminRecord.body.record, "管理者新增聯絡簿失敗");
+  assert(
+    adminRecord.response.status === 201 &&
+      adminRecord.body.record &&
+      (adminRecord.body.record as { status?: string }).status === "draft",
+    "管理者建立聯絡簿草稿失敗",
+  );
   const adminRecordId = adminRecord.body.record.id;
 
   const teacherRecord = await createRecord(
     teacherCookie,
     recordInput(teacherStudentId, "2099-01-02"),
   );
-  assert(teacherRecord.response.status === 201 && teacherRecord.body.record, "老師新增聯絡簿失敗");
+  assert(
+    teacherRecord.response.status === 201 &&
+      teacherRecord.body.record &&
+      (teacherRecord.body.record as { status?: string }).status === "draft",
+    "老師建立聯絡簿草稿失敗",
+  );
   const teacherRecordId = teacherRecord.body.record.id;
   results.createdContactBooks = recordIds.length;
 
@@ -183,11 +219,64 @@ async function main() {
   };
   assert(
     studentList.status === 200 &&
-      studentListBody.records?.length === 1 &&
-      studentListBody.records[0].id === teacherRecordId,
-    "學生只能看見自己的聯絡簿",
+      studentListBody.records?.length === 0,
+    "學生不應看見尚未發布的草稿",
   );
-  results.studentVisibleRecords = studentListBody.records.length;
+  results.studentHiddenDrafts = true;
+
+  const teacherPublishesUnrelated = await request(
+    `/api/contact-books/${adminRecordId}/publish`,
+    { method: "POST" },
+    teacherCookie,
+  );
+  assert(teacherPublishesUnrelated.status === 404, "老師不可發布非自己的學生聯絡簿");
+  results.teacherPublishesUnrelated = teacherPublishesUnrelated.status;
+
+  const publishResponse = await request(
+    `/api/contact-books/${teacherRecordId}/publish`,
+    { method: "POST" },
+    teacherCookie,
+  );
+  const publishBody = (await publishResponse.json()) as {
+    record?: { id: string; status: string };
+    notification?: { id: string; status: string };
+    alreadyPublished?: boolean;
+  };
+  assert(
+    publishResponse.status === 200 &&
+      publishBody.record?.status === "published" &&
+      publishBody.notification?.status === "no_subscription" &&
+      publishBody.alreadyPublished === false,
+    "發布聯絡簿或無訂閱狀態不正確",
+  );
+  const duplicatePublish = await request(
+    `/api/contact-books/${teacherRecordId}/publish`,
+    { method: "POST" },
+    teacherCookie,
+  );
+  const duplicatePublishBody = (await duplicatePublish.json()) as {
+    notification?: { id: string };
+    alreadyPublished?: boolean;
+  };
+  assert(
+    duplicatePublish.status === 200 &&
+      duplicatePublishBody.alreadyPublished === true &&
+      duplicatePublishBody.notification?.id === publishBody.notification.id,
+    "重複發布不應建立另一筆通知",
+  );
+  results.publishIsIdempotent = true;
+
+  const publishedStudentList = await request("/api/contact-books", {}, studentCookie);
+  const publishedStudentListBody = (await publishedStudentList.json()) as {
+    records?: Array<{ id: string }>;
+  };
+  assert(
+    publishedStudentList.status === 200 &&
+      publishedStudentListBody.records?.length === 1 &&
+      publishedStudentListBody.records[0].id === teacherRecordId,
+    "學生只能看見自己的已發布聯絡簿",
+  );
+  results.studentVisibleRecords = publishedStudentListBody.records.length;
 
   const studentCreate = await request(
     "/api/contact-books",
@@ -292,6 +381,24 @@ async function main() {
   );
   assert(teacherUpdate.status === 200, "老師修改自己的學生聯絡簿失敗");
 
+  const updateNotification = await request(
+    `/api/contact-books/${teacherRecordId}/notifications`,
+    {
+      method: "POST",
+      body: JSON.stringify({ requestId: `test-${crypto.randomUUID()}` }),
+    },
+    teacherCookie,
+  );
+  const updateNotificationBody = (await updateNotification.json()) as {
+    notification?: { status: string };
+  };
+  assert(
+    updateNotification.status === 200 &&
+      updateNotificationBody.notification?.status === "no_subscription",
+    "明確更新通知的無訂閱狀態不正確",
+  );
+  results.explicitUpdateNotification = true;
+
   const adminUpdate = await request(
     `/api/contact-books/${teacherRecordId}`,
     {
@@ -318,7 +425,9 @@ async function main() {
           typeof record.homework === "string" &&
           typeof record.nextPreview === "string" &&
           typeof record.studentComment === "string" &&
-          Array.isArray(record.media),
+          Array.isArray(record.media) &&
+          (record.status === "draft" || record.status === "published") &&
+          (record.publishedAt === null || record.publishedAt instanceof Date),
       ),
     "聯絡簿新增後查回欄位不完整",
   );

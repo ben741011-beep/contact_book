@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import ContactBookPanel, { type ContactBookRecord } from "./ContactBookPanel";
+import PushNotificationManager from "./PushNotificationManager";
 
 type Role = "admin" | "teacher" | "student";
 
@@ -241,6 +242,8 @@ export default function DashboardClient({
               : "你的帳號已啟用。目前沒有帳號管理權限。"}
         </p>
       </section>
+
+      {user.role === "student" ? <PushNotificationManager /> : null}
 
       {user.role !== "student" ? (
         <div className="dashboard-grid">

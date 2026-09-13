@@ -14,13 +14,27 @@ async function main() {
   const missingMediaCountBefore = await existingCollection.countDocuments({
     media: { $exists: false },
   });
+  const missingStatusCountBefore = await existingCollection.countDocuments({
+    status: { $exists: false },
+  });
   const collection = await ensureContactBooksCollection();
+  const { ensureContactBookNotificationsCollection } = await import(
+    "../models/ContactBookNotification"
+  );
+  const { ensurePushSubscriptionsCollection } = await import(
+    "../models/PushSubscription"
+  );
+  const notifications = await ensureContactBookNotificationsCollection();
+  const subscriptions = await ensurePushSubscriptionsCollection();
   const indexes = await collection.indexes();
   const missingCommentCountAfter = await collection.countDocuments({
     studentComment: { $exists: false },
   });
   const missingMediaCountAfter = await collection.countDocuments({
     media: { $exists: false },
+  });
+  const missingStatusCountAfter = await collection.countDocuments({
+    status: { $exists: false },
   });
 
   if (
@@ -37,7 +51,12 @@ async function main() {
       documentCount: await collection.countDocuments({}),
       migratedCount: missingCommentCountBefore - missingCommentCountAfter,
       migratedMediaCount: missingMediaCountBefore - missingMediaCountAfter,
+      migratedPublicationCount: missingStatusCountBefore - missingStatusCountAfter,
       indexes: indexes.map((index) => index.name),
+      notificationCollection: notifications.collectionName,
+      notificationIndexes: (await notifications.indexes()).map((index) => index.name),
+      pushSubscriptionCollection: subscriptions.collectionName,
+      pushSubscriptionIndexes: (await subscriptions.indexes()).map((index) => index.name),
     }),
   );
   await (await getMongoClient()).close();
